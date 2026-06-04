@@ -7,7 +7,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <!-- UTIF.js standard library for TIF image encoding support -->
   <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.min.js"></script>
   <script>
     tailwind.config={theme:{extend:{colors:{cream:'#faf8f5',sand:'#f0ece4',ink:'#1a1a1a',muted:'#7a7570',line:'#e2ddd5',accent:{DEFAULT:'#0d7377',light:'#e6f3f3',dark:'#095456'},rose:'#c2425a',gold:'#c49a2a',sky:'#2563eb'},fontFamily:{display:['Arial','sans-serif'],body:['Arial','sans-serif'],mono:['Arial','sans-serif']}}}}
@@ -241,7 +240,7 @@
               View Fullscreen
             </button>
             <button onclick="openExportModal()" class="btn-primary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3-0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
               Download Chart
             </button>
           </div>
@@ -289,11 +288,10 @@
     </div>
   </footer>
 
-  <!-- Advanced Export Modal -->
   <div id="export-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
     <div class="card bg-white p-6 w-96 shadow-2xl fade-in" style="animation-duration: 0.2s">
       <h3 class="font-display font-700 text-base text-ink mb-4 flex items-center gap-2">
-        <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3-0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
         Export Plot Settings
       </h3>
       <div class="space-y-4">
@@ -318,615 +316,589 @@
       </div>
       <div class="flex justify-end gap-2.5 mt-6 border-t border-line pt-4">
         <button onclick="closeExportModal()" class="btn-secondary px-4 py-2 rounded-xl font-body text-xs">Cancel</button>
-        <button onclick="executeAdvancedExport()" class="btn-primary px-5 py-2 rounded-xl font-body text-xs">Download File</button>
+        <button onclick="executeAdvancedExport()" class="btn-primary px-5 py-2 rounded-xl font-body text-xs">Export & Download</button>
       </div>
     </div>
   </div>
 
-<script>
-let simData = { actual: [], simulated: [], n: 0, params: null };
+  <script>
+    /* ========== Global State ========== */
+    let simData = {
+      actual: null,
+      simulated: null,
+      params: null
+    };
 
-function handleFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  document.getElementById('vth-filename').textContent = file.name;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const text = e.target.result;
-    const pattern = /-?\d+\.?\d*/g;
-    const matches = text.match(pattern);
-    if (!matches || matches.length < 3) {
-      alert('Could not parse enough numeric values from the file. Need at least 3 data points.');
-      return;
-    }
-    simData.actual = matches.map(Number);
-    const info = document.getElementById('file-info');
-    info.classList.remove('hidden');
-    info.innerHTML =
-      `<span class="text-accent font-bold">File loaded:</span> ${file.name}<br>` +
-      `<span class="text-accent font-bold">Data points:</span> ${simData.actual.length.toLocaleString()}<br>` +
-      `<span class="text-accent font-bold">Range:</span> [${Math.min(...simData.actual).toFixed(4)}, ${Math.max(...simData.actual).toFixed(4)}]<br>` +
-      `<span class="text-accent font-bold">First 5:</span> ${simData.actual.slice(0,5).map(v=>v.toFixed(4)).join(', ')} ...`;
-  };
-  reader.readAsText(file);
-}
-
-function gaussRand() {
-  let u = 0, v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-}
-
-function createLCG(seed) {
-  let s = seed % 2147483647;
-  if (s <= 0) s += 2147483646;
-  return function() {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-}
-
-function createSeededGauss(seed) {
-  const rng = createLCG(seed);
-  return function() {
-    let u = 0, v = 0;
-    while (u === 0) u = rng();
-    while (v === 0) v = rng();
-    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-  };
-}
-
-async function runSimulation() {
-  if (!simData.actual || simData.actual.length < 3) {
-    alert('Please upload a valid VTH data file with at least 3 data points.');
-    return;
-  }
-
-  const deltaT = parseFloat(document.getElementById('delta-t').value) || 1;
-  const seedInput = document.getElementById('random-seed').value;
-  const hasSeed = seedInput !== '' && !isNaN(parseInt(seedInput));
-
-  document.getElementById('run-progress').classList.remove('hidden');
-  document.getElementById('run-status').textContent = 'Reading data...';
-  document.getElementById('run-progress-bar').style.width = '5%';
-  await new Promise(r => setTimeout(r, 30));
-
-  const V = simData.actual;
-  const n = V.length;
-  simData.n = n;
-
-  document.getElementById('run-status').textContent = 'Linear regression...';
-  document.getElementById('run-progress-bar').style.width = '15%';
-  await new Promise(r => setTimeout(r, 30));
-
-  let Sx = 0, Sy = 0, Sxx = 0, Syy = 0, Sxy = 0;
-  for (let i = 0; i < n - 1; i++) {
-    Sx += V[i + 1];
-    Sy += V[i];
-    Sxx += V[i + 1] * V[i + 1];
-    Syy += V[i] * V[i];
-    Sxy += V[i] * V[i + 1];
-  }
-  const nn = n;
-  const a = (nn * Sxy - Sx * Sy) / (nn * Sxx - Sx * Sx);
-  const b = (Sy - a * Sx) / nn;
-  const sd_e = Math.sqrt((nn * Syy - Sy * Sy - a * (nn * Sxy - Sx * Sy)) / (nn * (nn - 2)));
-
-  const meanY = Sy / (n - 1);
-  let ssTot = 0, ssRes = 0;
-  for (let i = 0; i < n - 1; i++) {
-    const predicted = a * V[i] + b;
-    ssRes += (V[i + 1] - predicted) ** 2;
-    ssTot += (V[i + 1] - meanY) ** 2;
-  }
-  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
-
-  document.getElementById('run-status').textContent = 'Computing OU parameters...';
-  document.getElementById('run-progress-bar').style.width = '35%';
-  await new Promise(r => setTimeout(r, 30));
-
-  const theta = -Math.log(a) / deltaT;
-  const mu = b / (1 - a);
-  const sigma = sd_e / Math.sqrt(deltaT);
-
-  document.getElementById('run-status').textContent = 'Simulating OU process...';
-  document.getElementById('run-progress-bar').style.width = '50%';
-  await new Promise(r => setTimeout(r, 30));
-
-  const gaussFn = hasSeed ? createSeededGauss(parseInt(seedInput)) : gaussRand;
-  const simulated = new Array(n);
-  simulated[0] = V[0];
-  const expTheta = Math.exp(-theta * deltaT);
-  const sqrtTerm = Math.sqrt((1 - Math.exp(-2 * theta * deltaT)) / (2 * theta));
-  for (let t = 0; t < n - 1; t++) {
-    simulated[t + 1] = simulated[t] * expTheta + mu * (1 - expTheta) + sigma * sqrtTerm * gaussFn();
-  }
-  simData.simulated = simulated;
-  simData.params = { a, b, sd_e, theta, mu, sigma, r2, Sx, Sy, Sxx, Syy, Sxy, deltaT, n, hasSeed, seed: hasSeed ? parseInt(seedInput) : null };
-
-  document.getElementById('run-status').textContent = 'Updating UI...';
-  document.getElementById('run-progress-bar').style.width = '80%';
-  await new Promise(r => setTimeout(r, 30));
-
-  document.getElementById('results').classList.remove('hidden');
-
-  document.getElementById('r-n').textContent = n.toLocaleString();
-  document.getElementById('r-a').textContent = a.toFixed(6);
-  document.getElementById('r-b').textContent = b.toFixed(6);
-  document.getElementById('r-sde').textContent = sd_e.toFixed(6);
-  document.getElementById('r-r2').textContent = r2.toFixed(6);
-  document.getElementById('r-sx').textContent = Sx.toFixed(2);
-  document.getElementById('r-sy').textContent = Sy.toFixed(2);
-  document.getElementById('r-sxx').textContent = Sxx.toFixed(2);
-  document.getElementById('r-syy').textContent = Syy.toFixed(2);
-  document.getElementById('r-sxy').textContent = Sxy.toFixed(2);
-
-  document.getElementById('regression-detail').innerHTML = 
-    `<div class="text-accent mb-2 font-bold">[Linear Regression: V(t+1) = a·V(t) + b]</div>` +
-    `n = ${n} (uses n data points, n-1 regression pairs)<br><br>` +
-    `<div style="color:#6366f1" class="mb-2 font-bold">[Step 1: Sums]</div>` +
-    `Sx = ΣV[1:] = ${Sx.toFixed(4)}<br>` +
-    `Sy = ΣV[:-1] = ${Sy.toFixed(4)}<br>` +
-    `Sxx = ΣV[1:]² = ${Sxx.toFixed(4)}<br>` +
-    `Syy = ΣV[:-1]² = ${Syy.toFixed(4)}<br>` +
-    `Sxy = ΣV[:-1]·V[1:] = ${Sxy.toFixed(4)}<br><br>` +
-    `<div style="color:#6366f1" class="mb-2 font-bold">[Step 2: Regression Coefficients]</div>` +
-    `a = (n·Sxy - Sx·Sy) / (n·Sxx - Sx²)<br>` +
-    `  = (${n}×${Sxy.toFixed(4)} - ${Sx.toFixed(4)}×${Sy.toFixed(4)}) / (${n}×${Sxx.toFixed(4)} - ${Sx.toFixed(4)}²)<br>` +
-    `  = <span class="text-rose font-bold">${a.toFixed(6)}</span><br><br>` +
-    `b = (Sy - a·Sx) / n<br>` +
-    `  = (${Sy.toFixed(4)} - ${a.toFixed(6)}×${Sx.toFixed(4)}) / ${n}<br>` +
-    `  = <span style="color:#6366f1" class="font-bold">${b.toFixed(6)}</span><br><br>` +
-    `sd(e) = √((n·Syy - Sy² - a·(n·Sxy - Sx·Sy)) / (n·(n-2)))<br>` +
-    `  = <span class="text-gold font-bold">${sd_e.toFixed(6)}</span><br><br>` +
-    `R² = <span style="color:#16a34a" class="font-bold">${r2.toFixed(6)}</span>`;
-
-  document.getElementById('ou-theta').textContent = theta.toFixed(6);
-  document.getElementById('ou-mu').textContent = mu.toFixed(6);
-  document.getElementById('ou-sigma').textContent = sigma.toFixed(6);
-
-  document.getElementById('ou-detail').innerHTML = 
-    `<div class="text-accent mb-2 font-bold">[OU Parameter Derivation]</div>` +
-    `θ = -ln(a) / Δt = -ln(${a.toFixed(6)}) / ${deltaT} = <span class="text-accent font-bold">${theta.toFixed(6)}</span><br>` +
-    `μ = b / (1 - a) = ${b.toFixed(6)} / (1 - ${a.toFixed(6)}) = <span class="text-rose font-bold">${mu.toFixed(6)}</span><br>` +
-    `σ = sd(e) / √Δt = ${sd_e.toFixed(6)} / √${deltaT} = <span class="text-gold font-bold">${sigma.toFixed(6)}</span><br><br>` +
-    `<div class="text-muted font-bold mb-1">[Physical Interpretation]</div>` +
-    `• Mean Reversion Rate (θ): The speed at which VTH returns toward the long-term equilibrium.<br>` +
-    `• Long-term Mean (μ): The stable equilibrium constant baseline level of VTH threshold voltage.<br>` +
-    `• Noise Intensity (σ): Volatility amplitude of background random disturbances noise dynamics.`;
-
-  const stepSize = Math.max(1, Math.floor(n / 10));
-  const cycleLabels = Array.from({length: n}, (_, i) => i + 1);
-  
-  if (window.mainChart) window.mainChart.destroy();
-  window.mainChart = new Chart(document.getElementById('ou-chart'), {
-    type: 'line',
-    data: {
-      labels: cycleLabels,
-      datasets: [
-        {
-          label: 'Actual VTH Data',
-          data: V,
-          borderColor: '#c2425a',
-          backgroundColor: '#fff',
-          pointBorderColor: '#c2425a',
-          pointBackgroundColor: '#fff',
-          pointBorderWidth: 1.2,
-          pointRadius: 1.8,
-          pointHoverRadius: 4,
-          borderWidth: 1.2,
-          tension: 0,
-          fill: false
-        },
-        {
-          label: 'OU Simulated',
-          data: simulated,
-          borderColor: '#1a1a1a',
-          backgroundColor: '#fff',
-          pointBorderColor: '#1a1a1a',
-          pointBackgroundColor: '#fff',
-          pointBorderWidth: 1.2,
-          pointRadius: 1.8,
-          pointHoverRadius: 4,
-          borderWidth: 1.2,
-          tension: 0,
-          fill: false
+    /* ========== Drag & Drop & Upload Handling ========== */
+    document.addEventListener('DOMContentLoaded', () => {
+      const zone = document.querySelector('.drop-zone');
+      if(!zone) return;
+      ['dragenter', 'dragover'].forEach(name => {
+        zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }, false);
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }, false);
+      });
+      zone.addEventListener('drop', e => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if(files.length) {
+          document.getElementById('vth-file').files = files;
+          handleFile({files: files});
         }
-      ]
-    },
-    options: {
-      responsive: true,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true, padding: 20 } }
-      },
-      scales: {
-        x: {
-          title: { display: true, text: 'Cycles', color: '#7a7570', font: { family: 'Arial', size: 11 } },
-          grid: { color: '#f0ece4' },
-          bounds: 'data',
-          min: 1,
-          max: n,
-          ticks: {
-            color: '#94a3b8', 
-            font: { size: 9 },
-            autoSkip: false,
-            callback: function(value, index, ticks) {
-              const val = index + 1;
-              if (val === 1 || val === n || val % stepSize === 0) {
-                return val;
+      }, false);
+    });
+
+    function handleFile(input) {
+      const file = input.files[0];
+      if (!file) return;
+      document.getElementById('vth-filename').textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const text = e.target.result;
+        // Parse numbers split by space, comma, tab, or newline
+        const tokens = text.trim().split(/[\s,]+/);
+        const parsed = tokens.map(t => parseFloat(t)).filter(val => !isNaN(val));
+        if (parsed.length < 3) {
+          alert('Error parsing file: Could not find at least 3 valid numerical values.');
+          return;
+        }
+        simData.actual = parsed;
+        const info = document.getElementById('file-info');
+        info.classList.remove('hidden');
+        info.innerHTML = `<span class="text-accent font-bold">File loaded:</span> ${file.name}<br>` + 
+                         `<span class="text-accent font-bold">Data points:</span> ${simData.actual.length.toLocaleString()}<br>` + 
+                         `<span class="text-accent font-bold">Range:</span> [${Math.min(...simData.actual).toFixed(4)}, ${Math.max(...simData.actual).toFixed(4)}]<br>` + 
+                         `<span class="text-accent font-bold">First 5:</span> ${simData.actual.slice(0,5).map(v=>v.toFixed(4)).join(', ')} ...`;
+      };
+      reader.readAsText(file);
+    }
+
+    /* ========== Mathematical & Random Engines ========== */
+    function gaussRand() {
+      let u = 0, v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+    }
+
+    function createLCG(seed) {
+      let s = seed % 2147483647;
+      if (s <= 0) s += 2147483646;
+      return function() {
+        s = (s * 16807) % 2147483647;
+        return (s - 1) / 2147483646;
+      };
+    }
+
+    function createSeededGauss(seed) {
+      const rng = createLCG(seed);
+      return function() {
+        let u = 0, v = 0;
+        while (u === 0) u = rng();
+        while (v === 0) v = rng();
+        return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+      };
+    }
+
+    /* ========== Core Linear OLS Simulation Processing Pipeline ========== */
+    async function runSimulation() {
+      if (!simData.actual || simData.actual.length < 3) {
+        alert('Please upload a valid VTH data file with at least 3 data points.');
+        return;
+      }
+      const deltaT = parseFloat(document.getElementById('delta-t').value) || 1;
+      const seedInput = document.getElementById('random-seed').value;
+      const hasSeed = seedInput !== '' && !isNaN(parseInt(seedInput));
+
+      document.getElementById('run-progress').classList.remove('hidden');
+      document.getElementById('run-status').textContent = 'Performing Linear OLS Regression...';
+      document.getElementById('run-progress-bar').style.width = '15%';
+      await new Promise(r => setTimeout(r, 40));
+
+      const V = simData.actual;
+      const n = V.length;
+
+      let Sx = 0, Sy = 0, Sxx = 0, Syy = 0, Sxy = 0;
+      for (let i = 0; i < n - 1; i++) {
+        const x = V[i];
+        const y = V[i + 1];
+        Sx += x;
+        Sy += y;
+        Sxx += x * x;
+        Syy += y * y;
+        Sxy += x * y;
+      }
+
+      const N_fit = n - 1;
+      const denom = (N_fit * Sxx - Sx * Sx);
+      if (denom === 0) {
+        alert('Linear regression matrix determinant error: Check data variability.');
+        return;
+      }
+
+      const a = (N_fit * Sxy - Sx * Sy) / denom;
+      const b = (Sy - a * Sx) / N_fit;
+
+      let ssRes = 0, ssTot = 0;
+      const meanY = Sy / N_fit;
+      const sd_e = Math.sqrt((Syy - a * Sxy - b * Sy) / (N_fit - 2)) || 0;
+
+      for (let i = 0; i < n - 1; i++) {
+        const predicted = a * V[i] + b;
+        ssRes += (V[i + 1] - predicted) ** 2;
+        ssTot += (V[i + 1] - meanY) ** 2;
+      }
+      const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+
+      document.getElementById('run-status').textContent = 'Computing OU parameters...';
+      document.getElementById('run-progress-bar').style.width = '35%';
+      await new Promise(r => setTimeout(r, 30));
+
+      const theta = -Math.log(a) / deltaT;
+      const mu = b / (1 - a);
+      const sigma = sd_e / Math.sqrt(deltaT);
+
+      document.getElementById('run-status').textContent = 'Simulating OU process...';
+      document.getElementById('run-progress-bar').style.width = '50%';
+      await new Promise(r => setTimeout(r, 30));
+
+      const gaussFn = hasSeed ? createSeededGauss(parseInt(seedInput)) : gaussRand;
+      const simulated = new Array(n);
+      simulated[0] = V[0];
+      const expTheta = Math.exp(-theta * deltaT);
+      const sqrtTerm = Math.sqrt((1 - Math.exp(-2 * theta * deltaT)) / (2 * theta));
+
+      for (let t = 0; t < n - 1; t++) {
+        simulated[t + 1] = simulated[t] * expTheta + mu * (1 - expTheta) + sigma * sqrtTerm * gaussFn();
+      }
+
+      simData.simulated = simulated;
+      simData.params = { a, b, sd_e, theta, mu, sigma, r2, Sx, Sy, Sxx, Syy, Sxy, deltaT, n, hasSeed, seed: hasSeed ? parseInt(seedInput) : null };
+
+      document.getElementById('run-status').textContent = 'Updating UI...';
+      document.getElementById('run-progress-bar').style.width = '80%';
+      await new Promise(r => setTimeout(r, 30));
+
+      // Show results layout
+      document.getElementById('results').classList.remove('hidden');
+      document.getElementById('r-n').textContent = n.toLocaleString();
+      document.getElementById('r-a').textContent = a.toFixed(6);
+      document.getElementById('r-b').textContent = b.toFixed(6);
+      document.getElementById('r-sde').textContent = sd_e.toFixed(6);
+      document.getElementById('r-r2').textContent = r2.toFixed(6);
+
+      document.getElementById('r-sx').textContent = Sx.toFixed(4);
+      document.getElementById('r-sy').textContent = Sy.toFixed(4);
+      document.getElementById('r-sxx').textContent = Sxx.toFixed(4);
+      document.getElementById('r-syy').textContent = Syy.toFixed(4);
+      document.getElementById('r-sxy').textContent = Sxy.toFixed(4);
+
+      document.getElementById('regression-detail').innerHTML = 
+        `<div class="text-accent mb-2 font-bold">[OLS Equations Fitted Details]</div>` +
+        `Slope a = (n·Sxy - Sx·Sy) / (n·Sxx - Sx²) = <span class="text-rose font-bold">${a.toFixed(6)}</span><br>` +
+        `Intercept b = (Sy - a·Sx) / n = <span style="color:#6366f1" class="font-bold">${b.toFixed(6)}</span><br>` +
+        `Residual Std Dev sd(e) = √((Syy - a·Sxy - b·Sy) / (n-2)) = <span class="text-gold font-bold">${sd_e.toFixed(6)}</span><br>` +
+        `R² = <span style="color:#16a34a" class="font-bold">${r2.toFixed(6)}</span>`;
+
+      document.getElementById('ou-theta').textContent = theta.toFixed(6);
+      document.getElementById('ou-mu').textContent = mu.toFixed(6);
+      document.getElementById('ou-sigma').textContent = sigma.toFixed(6);
+
+      document.getElementById('ou-detail').innerHTML = 
+        `<div class="text-accent mb-2 font-bold">[OU Parameter Derivation]</div>` +
+        `&theta; = -ln(a) / &Delta;t = -ln(${a.toFixed(6)}) / ${deltaT} = <span class="text-accent font-bold">${theta.toFixed(6)}</span><br>` +
+        `&mu; = b / (1 - a) = ${b.toFixed(6)} / (1 - ${a.toFixed(6)}) = <span class="text-rose font-bold">${mu.toFixed(6)}</span><br>` +
+        `&sigma; = sd(e) / &radic;&Delta;t = ${sd_e.toFixed(6)} / &radic;${deltaT} = <span class="text-gold font-bold">${sigma.toFixed(6)}</span><br><br>` +
+        `<div class="text-muted font-bold mb-1">[Physical Interpretation]</div>` +
+        `• Mean Reversion Rate (&theta;): The speed at which VTH returns toward the long-term equilibrium.<br>` +
+        `• Long-term Mean (&mu;): The stable equilibrium constant baseline level of VTH threshold voltage.<br>` +
+        `• Noise Intensity (&sigma;): Volatility amplitude of background random disturbances noise dynamics.`;
+
+      // Plots and Tables redraw
+      const stepSize = Math.max(1, Math.floor(n / 10));
+      const cycleLabels = Array.from({length: n}, (_, i) => i + 1);
+
+      if (window.mainChart) window.mainChart.destroy();
+      window.mainChart = new Chart(document.getElementById('ou-chart'), {
+        type: 'line',
+        data: {
+          labels: cycleLabels,
+          datasets: [
+            {
+              label: 'Actual VTH Data',
+              data: V,
+              borderColor: '#c2425a',
+              backgroundColor: '#fff',
+              pointBorderColor: '#c2425a',
+              pointBackgroundColor: '#fff',
+              pointBorderWidth: 1.2,
+              pointRadius: 1.8,
+              pointHoverRadius: 4,
+              borderWidth: 1.2,
+              tension: 0,
+              fill: false
+            },
+            {
+              label: 'OU Simulated',
+              data: simulated,
+              borderColor: '#1a1a1a',
+              backgroundColor: '#fff',
+              pointBorderColor: '#1a1a1a',
+              pointBackgroundColor: '#fff',
+              pointBorderWidth: 1,
+              pointRadius: 0,
+              pointHoverRadius: 3,
+              borderWidth: 1.1,
+              tension: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#1a1a1a', font: { family: 'Arial', size: 12 }, usePointStyle: true } }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Cycle Number', color: '#7a7570', font: { family: 'Arial', size: 12 } },
+              grid: { color: '#f0ece4' },
+              bounds: 'data',
+              ticks: {
+                color: '#7a7570',
+                font: { size: 10 },
+                autoSkip: false,
+                callback: function(value, index) {
+                  const val = index + 1;
+                  if (val === 1 || val === n || val % stepSize === 0) return val;
+                  return null;
+                }
               }
-              return null;
+            },
+            y: {
+              title: { display: true, text: 'VTH (V)', color: '#7a7570', font: { family: 'Arial', size: 12 } },
+              grid: { color: '#f0ece4' },
+              ticks: { color: '#1a1a1a', font: { size: 11 } }
             }
           }
-        },
-        y: {
-          title: { display: true, text: 'VTH (V)', color: '#7a7570', font: { family: 'Arial', size: 11 } },
-          grid: { color: '#f0ece4' },
-          ticks: { color: '#94a3b8', font: { size: 10 } }
         }
-      }
-    }
-  });
+      });
 
-  const residuals = V.map((v, i) => v - simulated[i]);
-  if (window.residualChart) window.residualChart.destroy();
-  window.residualChart = new Chart(document.getElementById('residual-chart'), {
-    type: 'line',
-    data: {
-      labels: cycleLabels,
-      datasets: [{
-        label: 'Residual (Actual - Simulated)',
-        data: residuals,
-        borderColor: 'rgba(13,115,119,0.7)',
-        backgroundColor: 'rgba(13,115,119,0.06)',
-        pointRadius: 0,
-        borderWidth: 1.2,
-        tension: 0.1,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true } } },
-      scales: {
-        x: {
-          title: { display: true, text: 'Cycle', color: '#7a7570', font: { family: 'Arial', size: 11 } },
-          grid: { color: '#f0ece4' },
-          bounds: 'data',
-          min: 1,
-          max: n,
-          ticks: {
-            color: '#94a3b8', 
-            font: { size: 9 },
-            autoSkip: false,
-            callback: function(value, index, ticks) {
-              const val = index + 1;
-              if (val === 1 || val === n || val % stepSize === 0) {
-                return val;
+      const residuals = V.map((v, i) => v - simulated[i]);
+      if (window.residualChart) window.residualChart.destroy();
+      window.residualChart = new Chart(document.getElementById('residual-chart'), {
+        type: 'line',
+        data: {
+          labels: cycleLabels,
+          datasets: [{
+            label: 'Residual (Actual - Simulated)',
+            data: residuals,
+            borderColor: 'rgba(13,115,119,0.7)',
+            backgroundColor: 'rgba(13,115,119,0.06)',
+            pointRadius: 0,
+            borderWidth: 1.2,
+            tension: 0.1,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true } }
+          },
+          scales: {
+            x: {
+              title: { display: true, text: 'Cycle', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+              grid: { color: '#f0ece4' },
+              bounds: 'data',
+              min: 1,
+              max: n,
+              ticks: {
+                color: '#94a3b8',
+                font: { size: 9 },
+                autoSkip: false,
+                callback: function(value, index) {
+                  const val = index + 1;
+                  if (val === 1 || val === n || val % stepSize === 0) return val;
+                  return null;
+                }
               }
-              return null;
+            },
+            y: {
+              title: { display: true, text: 'Residual', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+              grid: { color: '#f0ece4' },
+              ticks: { color: '#94a3b8', font: { size: 10 } }
             }
           }
-        },
-        y: {
-          title: { display: true, text: 'Residual', color: '#7a7570', font: { family: 'Arial', size: 11 } },
-          grid: { color: '#f0ece4' },
-          ticks: { color: '#94a3b8', font: { size: 10 } }
         }
+      });
+
+      const stats = (arr) => {
+        const m = arr.reduce((s, v) => s + v, 0) / arr.length;
+        const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
+        const sd = Math.sqrt(v);
+        const sorted = [...arr].sort((a, b) => a - b);
+        const med = sorted.length % 2 === 0 ? 
+          (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
+        return { mean: m, std: sd, min: sorted[0], max: sorted[sorted.length-1], median: med };
+      };
+
+      const sA = stats(V), sS = stats(simulated);
+      const f6 = v => v.toFixed(6);
+
+      document.getElementById('desc-stats-table').innerHTML = 
+        `<table class="w-full font-mono text-xs text-left border border-line rounded-xl overflow-hidden">` +
+        `<thead class="bg-sand text-muted"><tr><th class="py-3 px-4 font-700">Metric</th><th class="py-3 px-4 text-center font-700">Actual VTH</th><th class="py-3 px-4 text-center font-700">OU Simulated</th></tr></thead>` +
+        `<tbody class="divide-y divide-line">` +
+        `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Mean (&mu;)</td><td class="py-3 px-4 text-center font-bold text-rose">${f6(sA.mean)}</td><td class="py-3 px-4 text-center font-bold text-ink">${f6(sS.mean)}</td></tr>` +
+        `<tr style="background:#fdfcfb"><td class="py-3 px-4 font-medium">Std Dev (&sigma;)</td><td class="py-3 px-4 text-center">${f6(sA.std)}</td><td class="py-3 px-4 text-center">${f6(sS.std)}</td></tr>` +
+        `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Minimum</td><td class="py-3 px-4 text-center">${f6(sA.min)}</td><td class="py-3 px-4 text-center">${f6(sS.min)}</td></tr>` +
+        `<tr style="background:#fdfcfb"><td class="py-3 px-4 font-medium">Maximum</td><td class="py-3 px-4 text-center">${f6(sA.max)}</td><td class="py-3 px-4 text-center">${f6(sS.max)}</td></tr>` +
+        `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Median</td><td class="py-3 px-4 text-center">${f6(sA.median)}</td><td class="py-3 px-4 text-center">${f6(sS.median)}</td></tr>` +
+        `</tbody></table>`;
+
+      let tHTML = `<table class="w-full font-mono text-xs data-table"><thead><tr class="text-muted"><th class="py-2.5 px-4 text-left">Cycle</th><th class="py-2.5 px-4 text-center">Actual VTH</th><th class="py-2.5 px-4 text-center">OU Simulated</th><th class="py-2.5 px-4 text-center text-rose">Residual</th></tr></thead><tbody>`;
+      const maxRows = Math.min(n, 100);
+      for (let i = 0; i < maxRows; i++) {
+        const bg = i % 2 === 0 ? '#fff' : '#faf8f5';
+        tHTML += `<tr style="background:${bg}"><td class="py-2.5 px-4 text-muted">${i+1}</td><td class="py-2.5 px-4 text-center font-medium">${V[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-accent">${simulated[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-rose">${residuals[i].toFixed(4)}</td></tr>`;
       }
+      if (n > 100) {
+        tHTML += `<tr style="background:#fff"><td colspan="4" class="py-3 px-4 text-center text-muted italic">Showing first 100 rows (${n.toLocaleString()} total points) ...</td></tr>`;
+      }
+      tHTML += `</tbody></table>`;
+      document.getElementById('data-table-wrap').innerHTML = tHTML;
+
+      document.getElementById('run-status').textContent = 'Completed!';
+      document.getElementById('run-progress-bar').style.width = '100%';
+      setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
     }
-  });
 
-  const stats = (arr) => {
-    const m = arr.reduce((s, v) => s + v, 0) / arr.length;
-    const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
-    const sd = Math.sqrt(v);
-    const sorted = [...arr].sort((a, b) => a - b);
-    const med = sorted.length % 2 === 0 ? (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
-    return { mean: m, std: sd, min: sorted[0], max: sorted[sorted.length-1], median: med };
-  };
-  const sA = stats(V), sS = stats(simulated);
-  const f6 = v => v.toFixed(6);
-  document.getElementById('desc-stats-table').innerHTML = 
-    `<table class="w-full font-mono text-xs data-table">` +
-    `<thead><tr class="text-muted"><th class="py-3 px-4 text-left rounded-tl-lg" style="background:#faf8f5">Statistic</th><th class="py-3 px-4 text-center" style="background:#faf8f5">Actual</th><th class="py-3 px-4 text-center rounded-tr-lg" style="background:#faf8f5">Simulated</th></tr></thead>` +
-    `<tbody>` +
-    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Mean</td><td class="py-3 px-4 text-center text-accent">${f6(sA.mean)}</td><td class="py-3 px-4 text-center text-accent">${f6(sS.mean)}</td></tr>` +
-    `<tr style="background:#faf8f5"><td class="py-3 px-4 font-medium">Std Dev</td><td class="py-3 px-4 text-center">${f6(sA.std)}</td><td class="py-3 px-4 text-center">${f6(sS.std)}</td></tr>` +
-    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Min</td><td class="py-3 px-4 text-center">${f6(sA.min)}</td><td class="py-3 px-4 text-center">${f6(sS.min)}</td></tr>` +
-    `<tr style="background:#faf8f5"><td class="py-3 px-4 font-medium">Max</td><td class="py-3 px-4 text-center">${f6(sA.max)}</td><td class="py-3 px-4 text-center">${f6(sS.max)}</td></tr>` +
-    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Median</td><td class="py-3 px-4 text-center">${f6(sA.median)}</td><td class="py-3 px-4 text-center">${f6(sS.median)}</td></tr>` +
-    `</tbody></table>`;
-
-  let tHTML = `<table class="w-full font-mono text-xs data-table"><thead><tr class="text-muted"><th class="py-2.5 px-4 text-left">Cycle</th><th class="py-2.5 px-4 text-center">Actual VTH</th><th class="py-2.5 px-4 text-center">OU Simulated</th><th class="py-2.5 px-4 text-center text-rose">Residual</th></tr></thead><tbody>`;
-  const maxRows = Math.min(n, 100);
-  for (let i = 0; i < maxRows; i++) {
-    const bg = i % 2 === 0 ? '#fff' : '#faf8f5';
-    tHTML += `<tr style="background:${bg}"><td class="py-2.5 px-4 text-muted">${i+1}</td><td class="py-2.5 px-4 text-center font-medium">${V[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-accent">${simulated[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-rose">${residuals[i].toFixed(4)}</td></tr>`;
-  }
-  if (n > 100) {
-    tHTML += `<tr style="background:#fff"><td colspan="4" class="py-3 px-4 text-center text-muted italic">Showing first 100 rows (${n.toLocaleString()} total points) ...</td></tr>`;
-  }
-  tHTML += `</tbody></table>`;
-  document.getElementById('data-table-wrap').innerHTML = tHTML;
-
-  document.getElementById('run-status').textContent = 'Completed!';
-  document.getElementById('run-progress-bar').style.width = '100%';
-  setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
-}
-
-// Open Export Settings Dialog Modal
-function openExportModal() {
-  if (!window.mainChart) return;
-  document.getElementById('export-modal').classList.remove('hidden');
-}
-
-function closeExportModal() {
-  document.getElementById('export-modal').classList.add('hidden');
-}
-
-// Advanced custom resolution and multi-format renderer exporter logic
-function executeAdvancedExport() {
-  if (!window.mainChart) return;
-
-  const format = document.getElementById('export-format').value; // image/png, image/jpeg, image/tiff
-  const scale = parseFloat(document.getElementById('export-scale').value) || 1;
-
-  // Generate a standalone temporary high-DPI canvas to redraw the exact graph configs
-  const origCanvas = document.getElementById('ou-chart');
-  const tempCanvas = document.createElement('canvas');
-  
-  // Set dimensions scaled by user resolution preferences
-  const targetWidth = origCanvas.clientWidth * scale;
-  const targetHeight = origCanvas.clientHeight * scale;
-  tempCanvas.width = targetWidth;
-  tempCanvas.height = targetHeight;
-  
-  const ctx = tempCanvas.getContext('2d');
-
-  // Fill solid white background (Crucial for JPEGs and academic TIF transparency errors)
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-  // Re-generate chart configurations matching the primary view inside the high-res canvas
-  const configCopy = JSON.parse(JSON.stringify(window.mainChart.config));
-  
-  // Disable transitions to snap rendering instantly
-  configCopy.options.animation = false;
-  configCopy.options.responsive = false;
-  
-  // Clean up fonts and layout properties for crisp multi-scaling factor adjustments
-  if (configCopy.options.plugins && configCopy.options.plugins.legend) {
-    configCopy.options.plugins.legend.labels.font.size = 11 * scale;
-    configCopy.options.plugins.legend.padding = 20 * scale;
-  }
-  
-  ['x', 'y'].forEach(axis => {
-    if (configCopy.options.scales[axis]) {
-      if (configCopy.options.scales[axis].title) {
-        configCopy.options.scales[axis].title.font.size = 11 * scale;
-      }
-      if (configCopy.options.scales[axis].ticks) {
-        configCopy.options.scales[axis].ticks.font.size = 9 * scale;
-      }
+    /* ========== Advanced Export Settings Dialog Modal ========== */
+    function openExportModal() {
+      if (!window.mainChart) return;
+      document.getElementById('export-modal').classList.remove('hidden');
     }
-  });
 
-  // Adjust line and dot scaling ratios based on export metrics
-  configCopy.data.datasets.forEach(dataset => {
-    dataset.borderWidth = 1.2 * scale;
-    dataset.pointRadius = 1.8 * scale;
-    dataset.pointBorderWidth = 1.2 * scale;
-  });
+    function closeExportModal() {
+      document.getElementById('export-modal').classList.add('hidden');
+    }
 
-  // Temporarily bind a custom offline Chart instance to structural canvas
-  const tempChart = new Chart(tempCanvas, {
-    type: configCopy.type,
-    data: configCopy.data,
-    options: configCopy.options
-  });
+    /* ========== Advanced Custom Resolution & Multi-format Exporter Engine ========== */
+    function executeAdvancedExport() {
+      if (!window.mainChart) return;
+      const format = document.getElementById('export-format').value;
+      const scale = parseFloat(document.getElementById('export-scale').value) || 1;
 
-  // Wait brief thread tick for layout ticks to finalize mapping pixels
-  setTimeout(() => {
-    let fileExtension = '.png';
-    if (format === 'image/jpeg') fileExtension = '.jpg';
-    if (format === 'image/tiff') fileExtension = '.tif';
-    
-    const filename = `OU_Simulation_Plot_x${scale}${fileExtension}`;
+      const origCanvas = document.getElementById('ou-chart');
+      const targetWidth = origCanvas.width * scale;
+      const targetHeight = origCanvas.height * scale;
 
-    if (format === 'image/tiff') {
-      // Decode raw viewport RGBA frame buffers arrays via UTIF browser encoder pipeline
-      const rgbaPixels = ctx.getImageData(0, 0, targetWidth, targetHeight).data;
-      const tiffBuffer = UTIF.encodeImage(rgbaPixels, targetWidth, targetHeight);
+      // Create an offscreen temporary high-DPI canvas to redraw the exact graph configs
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = targetWidth;
+      tempCanvas.height = targetHeight;
+      const ctx = tempCanvas.getContext('2d');
+
+      // Scale context to fix text crispness matching offscreen layouts
+      ctx.scale(scale, scale);
+
+      // Deep clone configuration mappings
+      const configCopy = JSON.parse(JSON.stringify(window.mainChart.config));
       
-      const blob = new Blob([tiffBuffer], { type: 'image/tiff' });
-      const downloadLink = document.createElement('a');
-      downloadLink.href = URL.createObjectURL(blob);
-      downloadLink.download = filename;
-      downloadLink.click();
-    } else {
-      // Direct compression pipeline for system PNG/JPEG structures
-      const dataUrl = tempCanvas.toDataURL(format, format === 'image/jpeg' ? 0.95 : undefined);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = dataUrl;
-      downloadLink.download = filename;
-      downloadLink.click();
+      // Ensure smooth scaling layout rendering parameters
+      configCopy.options.responsive = false;
+      configCopy.options.animation = false;
+      
+      // Force scales tick font adjustments for high resolution outputs
+      if(scale > 1) {
+        const adjustFont = (obj) => {
+          if(!obj) return;
+          if(obj.font) {
+            if(obj.font.size) obj.font.size = obj.font.size * 0.9;
+          }
+          if(obj.title && obj.title.font) {
+            if(obj.title.font.size) obj.title.font.size = obj.title.font.size * 0.9;
+          }
+        };
+        adjustFont(configCopy.options.plugins.legend.labels);
+        if(configCopy.options.scales.x) {
+          adjustFont(configCopy.options.scales.x.ticks);
+          adjustFont(configCopy.options.scales.x.title);
+        }
+        if(configCopy.options.scales.y) {
+          adjustFont(configCopy.options.scales.y.ticks);
+          adjustFont(configCopy.options.scales.y.title);
+        }
+      }
+
+      // Temporarily bind a custom offline Chart instance to structural canvas
+      const tempChart = new Chart(tempCanvas, {
+        type: configCopy.type,
+        data: window.mainChart.data, // Reference live objects cleanly
+        options: configCopy.options
+      });
+
+      // Wait a brief thread tick for layout initialization to fully map pixel maps
+      setTimeout(() => {
+        let fileExtension = '.png';
+        if (format === 'image/jpeg') fileExtension = '.jpg';
+        if (format === 'image/tiff') fileExtension = '.tif';
+        
+        const filename = `OU_Simulation_Plot_x${scale}${fileExtension}`;
+
+        if (format === 'image/tiff') {
+          // Decode raw viewport RGBA frame buffers arrays via UTIF browser encoder pipeline
+          const rgbaPixels = ctx.getImageData(0, 0, targetWidth, targetHeight).data;
+          const tiffBuffer = UTIF.encodeImage(rgbaPixels, targetWidth, targetHeight);
+          const blob = new Blob([tiffBuffer], { type: 'image/tiff' });
+          
+          const downloadLink = document.createElement('a');
+          downloadLink.href = URL.createObjectURL(blob);
+          downloadLink.download = filename;
+          downloadLink.click();
+        } else {
+          // Direct compression pipeline for system PNG/JPEG structures
+          const dataUrl = tempCanvas.toDataURL(format, format === 'image/jpeg' ? 0.95 : undefined);
+          const downloadLink = document.createElement('a');
+          downloadLink.href = dataUrl;
+          downloadLink.download = filename;
+          downloadLink.click();
+        }
+
+        // Garbage clean background structures instantly
+        tempChart.destroy();
+        closeExportModal();
+      }, 100);
     }
 
-    // Garbage clean background structures instantly
-    tempChart.destroy();
-    closeExportModal();
-  }, 50);
-}
+    /* ========== Fullscreen & Interactive Zoom Viewer Module ========== */
+    function zoomChart() {
+      if (!window.mainChart) return;
+      const imgData = window.mainChart.toBase64Image();
+      const newWindow = window.open();
+      if (newWindow) {
+        newWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>OU Simulation Chart - Interactive Zoom View</title>
+            <style>
+              body { margin: 0; padding: 0; background: #faf8f5; overflow: hidden; font-family: Arial, sans-serif; height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }
+              #container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; cursor: grab; position: relative; user-select: none; }
+              #container:active { cursor: grabbing; }
+              img { max-width: 90%; max-height: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border-radius: 12px; background: white; padding: 24px; pointer-events: none; }
+              #tip { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(26,26,26,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 500; pointer-events: none; letter-spacing: 0.02em; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+            </style>
+          </head>
+          <body>
+            <div id="tip">Scroll to Zoom (Center-Aligned) · Drag to Pan Workspace</div>
+            <div id="container">
+              <img id="zoomable-img" src="${imgData}" alt="Chart View"/>
+            </div>
+            <script>
+              const container = document.getElementById('container');
+              const img = document.getElementById('zoomable-img');
+              let scale = 1;
+              let pointX = 0, pointY = 0, startX = 0, startY = 0;
+              let isDragging = false;
 
-function zoomChart() {
-  if (!window.mainChart) return;
-  const imgData = window.mainChart.toBase64Image();
-  const newWindow = window.open();
-  if (newWindow) {
-    newWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>OU Simulation Chart - Interactive Zoom View</title>
-          <style>
-            body { margin: 0; padding: 0; background: #faf8f5; overflow: hidden; font-family: Arial, sans-serif; height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }
-            #container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; cursor: grab; position: relative; user-select: none; }
-            #container:active { cursor: grabbing; }
-            img { max-width: 90%; max-height: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border-radius: 12px; background: white; padding: 24px; transition: transform 0.05s ease-out; transform-origin: 0 0; pointer-events: none; }
-            #hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(26,26,26,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); letter-spacing: 0.03em; text-align: center; line-height: 1.5; }
-          </style>
-        </head>
-        <body>
-          <div id="container">
-            <img id="zoomable-img" src="${imgData}" alt="OU Process Plot Fullscreen">
-          </div>
-          <div id="hint">🖱️ Scroll wheel to <b>Zoom In/Out</b> &nbsp;|&nbsp; 🤝 Click & Drag to <b>Pan</b> &nbsp;|&nbsp; 🔄 Double-click to <b>Reset</b></div>
+              function updateTransform() {
+                // Remove the 0 0 origin, let it scale from the geometric center of the image bounds
+                img.style.transformOrigin = 'center center';
+                img.style.transform = 'translate(' + pointX + 'px, ' + pointY + 'px) scale(' + scale + ')';
+              }
 
-          <script>
-            const container = document.getElementById('container');
-            const img = document.getElementById('zoomable-img');
+              container.addEventListener('wheel', function (e) {
+                e.preventDefault();
+                const delta = -e.deltaY;
+                const zoomFactor = delta > 0 ? 1.15 : 1 / 1.15;
+                let newScale = scale * zoomFactor;
+                newScale = Math.min(Math.max(0.4, newScale), 15);
+                
+                // Pure scale updates without shifts keep zoom pinned to the structural transform matrix midpoints
+                scale = newScale;
+                updateTransform();
+              });
 
-            let scale = 1;
-            let pointX = 0;
-            let pointY = 0;
-            let startX = 0;
-            let startY = 0;
-            let isDragging = false;
+              container.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                startX = e.clientX - pointX;
+                startY = e.clientY - pointY;
+                isDragging = true;
+                container.style.cursor = 'grabbing';
+              });
 
-            function updateTransform() {
-              img.style.transformOrigin = '0 0';
-              img.style.transform = 'translate(' + pointX + 'px, ' + pointY + 'px) scale(' + scale + ')';
-            }
+              window.addEventListener('mousemove', function (e) {
+                if (!isDragging) return;
+                pointX = e.clientX - startX;
+                pointY = e.clientY - startY;
+                updateTransform();
+              });
 
-            container.addEventListener('wheel', function (e) {
-              e.preventDefault();
-              
-              const rect = container.getBoundingClientRect();
-              const mouseX = e.clientX - rect.left;
-              const mouseY = e.clientY - rect.top;
-
-              const imageX = (mouseX - pointX) / scale;
-              const imageY = (mouseY - pointY) / scale;
-
-              const delta = -e.deltaY;
-              const zoomFactor = delta > 0 ? 1.15 : 1 / 1.15;
-              
-              let newScale = scale * zoomFactor;
-              newScale = Math.min(Math.max(0.4, newScale), 15);
-
-              pointX = mouseX - imageX * newScale;
-              pointY = mouseY - imageY * newScale;
-              scale = newScale;
-
-              updateTransform();
-            });
-
-            container.addEventListener('mousedown', function (e) {
-              e.preventDefault();
-              startX = e.clientX - pointX;
-              startY = e.clientY - pointY;
-              isDragging = true;
-            });
-
-            window.addEventListener('mousemove', function (e) {
-              if (!isDragging) return;
-              pointX = e.clientX - startX;
-              pointY = e.clientY - startY;
-              updateTransform();
-            });
-
-            window.addEventListener('mouseup', function () {
-              isDragging = false;
-            });
-
-            container.addEventListener('dblclick', function () {
-              scale = 1;
-              pointX = 0;
-              pointY = 0;
-              img.style.transformOrigin = 'center center';
-              img.style.transform = 'none';
-            });
-          <\/script>
-        </body>
-      </html>
-    `);
-    newWindow.document.close();
-  } else {
-    alert('The pop-up window was blocked by your browser. Please allow pop-ups for this website.');
-  }
-}
-
-function exportCSV() {
-  if (!simData.actual.length) return;
-  let csv = 'Cycle,Actual VTH,OU Simulated,Residual\n';
-  for (let i = 0; i < simData.n; i++) {
-    const res = simData.actual[i] - simData.simulated[i];
-    csv += `${i + 1},${simData.actual[i]},${simData.simulated[i]},${res}\n`;
-  }
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.setAttribute('download', `ou_process_data_n${simData.n}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-function exportXLSX() {
-  if (!simData.actual.length) return;
-  const data = [['Cycle', 'Actual VTH', 'OU Simulated', 'Residual']];
-  for (let i = 0; i < simData.n; i++) {
-    data.push([i + 1, simData.actual[i], simData.simulated[i], simData.actual[i] - simData.simulated[i]]);
-  }
-  const ws = XLSX.utils.aoa_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'VTH Data');
-
-  const p = simData.params;
-  const paramData = [
-    ['OU Process Parameters'],
-    [''],
-    ['Parameter', 'Value'],
-    ['Slope a', p.a],
-    ['Intercept b', p.b],
-    ['Std Dev sd(e)', p.sd_e],
-    ['R-squared', p.r2],
-    [''],
-    ['Mean Reversion Rate θ', p.theta],
-    ['Long-term Mean μ', p.mu],
-    ['Noise Intensity σ', p.sigma],
-    [''],
-    ['Time Step Δt', p.deltaT],
-    ['Data Points n', p.n],
-    ['Random Seed', p.hasSeed ? p.seed : 'Random']
-  ];
-  const ws2 = XLSX.utils.aoa_to_sheet(paramData);
-  XLSX.utils.book_append_sheet(wb, ws2, 'Parameters');
-
-  XLSX.writeFile(wb, `ou_process_data_n${simData.n}.xlsx`);
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const zone = document.querySelector('.drop-zone');
-  if(!zone) return;
-  ['dragenter', 'dragover'].forEach(name => {
-    zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }, false);
-  });
-  ['dragleave', 'drop'].forEach(name => {
-    zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }, false);
-  });
-  zone.addEventListener('drop', e => {
-    const dt = e.dataTransfer;
-    const files = dt.files;
-    if(files.length) {
-      document.getElementById('vth-file').files = files;
-      handleFile(document.getElementById('vth-file'));
+              window.addEventListener('mouseup', function () {
+                isDragging = false;
+                container.style.cursor = 'grab';
+              });
+            <\/script>
+          </body>
+          </html>
+        `);
+        newWindow.document.close();
+      }
     }
-  }, false);
-});
-</script>
+
+    /* ========== CSV & Excel Spreadsheet Generation Utilities ========== */
+    function exportCSV() {
+      if (!simData.actual) return;
+      let csv = 'Cycle,Actual VTH,OU Simulated,Residual\r\n';
+      const V = simData.actual;
+      const S = simData.simulated;
+      for (let i = 0; i < V.length; i++) {
+        csv += `${i + 1},${V[i]},${S[i]},${V[i] - S[i]}\r\n`;
+      }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `ou_process_data_n${V.length}.csv`;
+      link.click();
+    }
+
+    function exportXLSX() {
+      if (!simData.actual) return;
+      const data = [['Cycle', 'Actual VTH', 'OU Simulated Trajectory']];
+      for (let i = 0; i < simData.actual.length; i++) {
+        data.push([i + 1, simData.actual[i], simData.simulated[i]]);
+      }
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'VTH Data');
+
+      // Add parameters sheet
+      const p = simData.params;
+      const paramData = [
+        ['OU Process Parameters'],
+        [''],
+        ['Parameter', 'Value'],
+        ['Slope a', p.a],
+        ['Intercept b', p.b],
+        ['Std Dev sd(e)', p.sd_e],
+        ['R-squared', p.r2],
+        [''],
+        ['Mean Reversion Rate \u03b8', p.theta],
+        ['Long-term Mean \u03bc', p.mu],
+        ['Noise Intensity \u03c3', p.sigma],
+        [''],
+        ['Time Step \u0394t', p.deltaT],
+        ['Data Points n', p.n],
+        ['Random Seed', p.hasSeed ? p.seed : 'Random']
+      ];
+      const ws2 = XLSX.utils.aoa_to_sheet(paramData);
+      XLSX.utils.book_append_sheet(wb, ws2, 'Parameters');
+
+      XLSX.writeFile(wb, `ou_process_data_n${simData.n}.xlsx`);
+    }
+  </script>
 </body>
 </html>

@@ -306,14 +306,14 @@
           </select>
         </div>
         <div>
-          <label class="font-mono text-[11px] text-muted block mb-1.5 uppercase tracking-wider">Resolution / Sharpness</label>
-          <select id="export-scale" class="w-full rounded-xl px-3 py-2.5 font-mono text-sm">
-            <option value="1">Standard Resolution (1x Screen)</option>
-            <option value="2">Medium Resolution (2x Clear)</option>
-            <option value="3">High Resolution (3x ~300 DPI Paper Standard)</option>
-            <option value="4">Ultra High Resolution (4x ~600 DPI Ultra Sharp)</option>
+          <label class="font-mono text-[11px] text-muted block mb-1.5 uppercase tracking-wider">Resolution / DPI</label>
+          <select id="export-dpi" class="w-full rounded-xl px-3 py-2.5 font-mono text-sm">
+            <option value="96">Screen Resolution (96 DPI)</option>
+            <option value="200">Standard Office (200 DPI)</option>
+            <option value="300">Publication Grade (300 DPI)</option>
+            <option value="600">Ultra High Definition (600 DPI)</option>
           </select>
-          <p class="font-body text-[10px] text-muted mt-1.5 leading-relaxed">Higher scaling values force a high-DPI offscreen redraw, ensuring all text labels and data lines remain razor-sharp when zoomed or printed.</p>
+          <p class="font-body text-[10px] text-muted mt-1.5 leading-relaxed">Higher DPI creates a much larger canvas, ensuring all mathematical lines and labels remain razor-sharp for professional journals and printing.</p>
         </div>
       </div>
       <div class="flex justify-end gap-2.5 mt-6 border-t border-line pt-4">
@@ -657,7 +657,6 @@ async function runSimulation() {
   setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
 }
 
-// Open Export Settings Dialog Modal
 function openExportModal() {
   if (!window.mainChart) return;
   document.getElementById('export-modal').classList.remove('hidden');
@@ -667,24 +666,27 @@ function closeExportModal() {
   document.getElementById('export-modal').classList.add('hidden');
 }
 
-// Advanced custom resolution and multi-format renderer exporter logic
+// 核心逻辑修改：处理 DPI 与 高分辨率
 function executeAdvancedExport() {
   if (!window.mainChart) return;
 
   const btn = document.getElementById('btn-execute-export');
   const originalText = btn.innerText;
-  btn.innerText = 'Processing...';
+  btn.innerText = 'Processing High DPI...';
   btn.disabled = true;
 
   const format = document.getElementById('export-format').value; 
-  const scale = parseFloat(document.getElementById('export-scale').value) || 1;
+  const targetDpi = parseInt(document.getElementById('export-dpi').value);
+  
+  // 计算缩放倍率：网页默认 96DPI
+  const scaleFactor = targetDpi / 96;
 
-  // Generate a standalone temporary high-DPI canvas
   const origCanvas = document.getElementById('ou-chart');
   const tempCanvas = document.createElement('canvas');
   
-  const targetWidth = origCanvas.offsetWidth * scale;
-  const targetHeight = origCanvas.offsetHeight * scale;
+  // 根据 DPI 确定总像素尺寸
+  const targetWidth = origCanvas.offsetWidth * scaleFactor;
+  const targetHeight = origCanvas.offsetHeight * scaleFactor;
   tempCanvas.width = targetWidth;
   tempCanvas.height = targetHeight;
   
@@ -692,189 +694,175 @@ function executeAdvancedExport() {
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-  // We need to copy the configuration but adjust for the new scale
-  // Using structuredClone or simple copy for the config object
+  // 深度复制配置
   const chartConfig = {
     type: 'line',
     data: JSON.parse(JSON.stringify(window.mainChart.data)),
     options: JSON.parse(JSON.stringify(window.mainChart.options))
   };
 
-  // Adjust options for high resolution
   chartConfig.options.responsive = false;
   chartConfig.options.animation = false;
-  chartConfig.options.devicePixelRatio = 1; // Critical to set 1 and manage scaling via canvas size
+  chartConfig.options.devicePixelRatio = 1; 
 
-  // Scale fonts and elements
+  // 根据倍率全局调整所有字体和线条粗细
   if (chartConfig.options.plugins?.legend?.labels?.font) {
-    chartConfig.options.plugins.legend.labels.font.size = 11 * scale;
-    chartConfig.options.plugins.legend.padding = 20 * scale;
+    chartConfig.options.plugins.legend.labels.font.size = 11 * scaleFactor;
+    chartConfig.options.plugins.legend.padding = 20 * scaleFactor;
   }
   
   ['x', 'y'].forEach(axis => {
     const a = chartConfig.options.scales[axis];
     if (a) {
-      if (a.title?.font) a.title.font.size = 11 * scale;
-      if (a.ticks?.font) a.ticks.font.size = 9 * scale;
+      if (a.title?.font) a.title.font.size = 11 * scaleFactor;
+      if (a.ticks?.font) a.ticks.font.size = 9 * scaleFactor;
     }
   });
 
   chartConfig.data.datasets.forEach(dataset => {
-    dataset.borderWidth = 1.2 * scale;
-    dataset.pointRadius = 1.8 * scale;
-    dataset.pointBorderWidth = 1.2 * scale;
+    dataset.borderWidth = 1.2 * scaleFactor;
+    dataset.pointRadius = 1.8 * scaleFactor;
+    dataset.pointBorderWidth = 1.2 * scaleFactor;
   });
 
-  // Render on the offscreen canvas
   const tempChart = new Chart(ctx, chartConfig);
 
-  // Important: Wait for Chart.js to finish internal rendering cycles
   setTimeout(() => {
-    let fileExtension = '.png';
-    if (format === 'image/jpeg') fileExtension = '.jpg';
-    if (format === 'image/tiff') fileExtension = '.tif';
+    let fileExt = '.png';
+    if (format === 'image/jpeg') fileExt = '.jpg';
+    if (format === 'image/tiff') fileExt = '.tif';
     
-    const filename = `OU_Simulation_Plot_x${scale}${fileExtension}`;
+    const filename = `OU_Simulation_${targetDpi}DPI${fileExt}`;
 
     try {
       if (format === 'image/tiff') {
-        const rgbaPixels = ctx.getImageData(0, 0, targetWidth, targetHeight).data;
-        // UTIF expects an ArrayBuffer or Uint8Array of the pixel data
-        const tiffBuffer = UTIF.encodeImage(rgbaPixels, targetWidth, targetHeight);
-        const blob = new Blob([tiffBuffer], { type: 'image/tiff' });
-        const downloadLink = document.createElement('a');
-        downloadLink.href = URL.createObjectURL(blob);
-        downloadLink.download = filename;
-        downloadLink.click();
+        const rgba = ctx.getImageData(0, 0, targetWidth, targetHeight).data;
+        const tiffBuf = UTIF.encodeImage(rgba, targetWidth, targetHeight);
+        const blob = new Blob([tiffBuf], { type: 'image/tiff' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
       } else {
         const dataUrl = tempCanvas.toDataURL(format, format === 'image/jpeg' ? 0.95 : 1.0);
-        const downloadLink = document.createElement('a');
-        downloadLink.href = dataUrl;
-        downloadLink.download = filename;
-        downloadLink.click();
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        a.click();
       }
-    } catch (err) {
-      console.error('Export failed:', err);
-      alert('Export failed. The resolution might be too high for your browser to handle.');
+    } catch (e) {
+      console.error(e);
+      alert('Resolution too high for browser memory. Try a lower DPI.');
     }
 
     tempChart.destroy();
     btn.innerText = originalText;
     btn.disabled = false;
     closeExportModal();
-  }, 500); // 500ms delay to ensure chart rendering is fully flushed to canvas
+  }, 600);
 }
 
+// 核心逻辑修改：全屏居中与原地中心缩放
 function zoomChart() {
   if (!window.mainChart) return;
   const imgData = window.mainChart.toBase64Image();
-  const newWindow = window.open();
-  if (newWindow) {
-    newWindow.document.write(`
+  const newWin = window.open();
+  if (newWin) {
+    newWin.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>OU Simulation Chart - Interactive Zoom View</title>
+          <title>OU Chart - Precise Center Zoom</title>
           <style>
-            body { margin: 0; padding: 0; background: #faf8f5; overflow: hidden; font-family: Arial, sans-serif; height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }
-            #viewport { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; cursor: grab; background: #faf8f5; }
-            #viewport:active { cursor: grabbing; }
-            #img-container { transform-origin: 0 0; will-change: transform; display: flex; justify-content: center; align-items: center; }
-            img { box-shadow: 0 10px 40px rgba(0,0,0,0.08); border-radius: 12px; background: white; padding: 24px; max-width: 90vw; user-select: none; pointer-events: none; }
-            #hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(26,26,26,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); letter-spacing: 0.03em; text-align: center; z-index: 100; }
+            body { margin: 0; padding: 0; background: #faf8f5; overflow: hidden; height: 100vh; width: 100vw; font-family: Arial; }
+            #container { 
+              position: fixed; 
+              top: 0; left: 0; width: 100%; height: 100%;
+              display: flex; justify-content: center; align-items: center;
+              cursor: grab;
+              user-select: none;
+            }
+            #container:active { cursor: grabbing; }
+            #img-wrapper {
+              position: absolute;
+              top: 50%; left: 50%;
+              transform: translate(-50%, -50%);
+              transform-origin: center center; /* 锁定中心缩放 */
+              will-change: transform;
+            }
+            img { 
+              display: block;
+              max-width: 90vw; 
+              box-shadow: 0 10px 40px rgba(0,0,0,0.1); 
+              background: white; padding: 20px; border-radius: 8px;
+              pointer-events: none;
+            }
+            #hint { 
+              position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
+              background: #1a1a1a; color: white; padding: 8px 16px; border-radius: 20px; 
+              font-size: 12px; z-index: 100; opacity: 0.8;
+            }
           </style>
         </head>
         <body>
-          <div id="viewport">
-            <div id="img-container">
-              <img id="zoomable-img" src="${imgData}">
+          <div id="container">
+            <div id="img-wrapper">
+              <img src="${imgData}">
             </div>
           </div>
-          <div id="hint">🖱️ Scroll wheel to <b>Zoom In/Out</b> &nbsp;|&nbsp; 🤝 Drag to <b>Pan</b> &nbsp;|&nbsp; 🔄 Double-click to <b>Reset</b></div>
+          <div id="hint">🖱️ Scroll: Center Zoom | 🤝 Drag: Pan | 🔄 Double-click: Reset</div>
 
           <script>
-            const viewport = document.getElementById('viewport');
-            const container = document.getElementById('img-container');
-            const img = document.getElementById('zoomable-img');
+            const wrapper = document.getElementById('img-wrapper');
+            const container = document.getElementById('container');
 
             let scale = 1;
-            let translateX = 0;
-            let translateY = 0;
+            let posX = 0; // 平移偏移量
+            let posY = 0;
             let isDragging = false;
-            let startX = 0, startY = 0;
+            let startX, startY;
 
-            // Use the viewport center as initial position
-            function updateTransform() {
-              container.style.transform = 'translate(' + translateX + 'px, ' + translateY + 'px) scale(' + scale + ')';
+            function update() {
+              // translate(-50%, -50%) 是为了保持居中
+              // posX/posY 是后续拖拽产生的偏移
+              wrapper.style.transform = "translate(calc(-50% + " + posX + "px), calc(-50% + " + posY + "px)) scale(" + scale + ")";
             }
 
-            viewport.addEventListener('wheel', (e) => {
+            container.addEventListener('wheel', (e) => {
               e.preventDefault();
-              const zoomSpeed = 0.0015;
               const delta = -e.deltaY;
-              const factor = Math.pow(1.1, delta / 100);
+              const ratio = delta > 0 ? 1.1 : 1 / 1.1;
+              const newScale = scale * ratio;
               
-              // Calculate mouse position relative to container
-              const rect = container.getBoundingClientRect();
-              const mouseX = (e.clientX - rect.left) / scale;
-              const mouseY = (e.clientY - rect.top) / scale;
-
-              const newScale = Math.min(Math.max(0.2, scale * factor), 20);
-              
-              // Apply translation to keep the point under the mouse
-              translateX -= mouseX * (newScale - scale) * scale; // This was wrong in previous logic
-              // Correct focal point math:
-              // Offset the translation by the change in scale relative to the pointer
-              const dx = (e.clientX - rect.left);
-              const dy = (e.clientY - rect.top);
-              
-              translateX = e.clientX - (e.clientX - translateX) * (newScale / scale);
-              translateY = e.clientY - (e.clientY - translateY) * (newScale / scale);
-              
-              scale = newScale;
-              updateTransform();
+              if (newScale > 0.1 && newScale < 30) {
+                scale = newScale;
+                update();
+              }
             }, { passive: false });
 
-            viewport.addEventListener('mousedown', (e) => {
+            container.addEventListener('mousedown', (e) => {
               isDragging = true;
-              startX = e.clientX - translateX;
-              startY = e.clientY - translateY;
+              startX = e.clientX - posX;
+              startY = e.clientY - posY;
             });
 
             window.addEventListener('mousemove', (e) => {
               if (!isDragging) return;
-              translateX = e.clientX - startX;
-              translateY = e.clientY - startY;
-              updateTransform();
+              posX = e.clientX - startX;
+              posY = e.clientY - startY;
+              update();
             });
 
-            window.addEventListener('mouseup', () => {
-              isDragging = false;
-            });
+            window.addEventListener('mouseup', () => isDragging = false);
 
-            viewport.addEventListener('dblclick', () => {
-              scale = 1;
-              translateX = 0;
-              translateY = 0;
-              container.style.transform = 'none';
+            container.addEventListener('dblclick', () => {
+              scale = 1; posX = 0; posY = 0; update();
             });
-
-            // Initial centering
-            const centerImage = () => {
-              const vRect = viewport.getBoundingClientRect();
-              const cRect = container.getBoundingClientRect();
-              translateX = (vRect.width - cRect.width) / 2;
-              translateY = (vRect.height - cRect.height) / 2;
-              updateTransform();
-            };
-            window.onload = centerImage;
           <\/script>
         </body>
       </html>
     `);
-    newWindow.document.close();
-  } else {
-    alert('Pop-up blocked! Please allow pop-ups to view the chart fullscreen.');
+    newWin.document.close();
   }
 }
 

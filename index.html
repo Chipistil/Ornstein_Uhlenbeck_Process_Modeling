@@ -53,7 +53,6 @@
     .fancy-divider::before,.fancy-divider::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,#e2ddd5,transparent)}
     .fancy-divider span{font-family:'Arial';font-size:10px;color:#7a7570;text-transform:uppercase;letter-spacing:.15em}
     
-    /* 极致平滑且居中的图片放大全屏查看器样式 */
     #fullscreen-viewer { transition: opacity 0.25s ease; }
     #viewer-img-container {
       position: relative;
@@ -309,7 +308,7 @@
       <p class="font-mono text-xs text-line">OU Process Simulator v1.0 &middot; Browser-based</p>
       <p class="font-mono text-xs text-line">Open Source &middot; MIT License</p>
     </div>
-  </footer>
+  </header>
 
   <div id="export-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
     <div class="card bg-white p-6 w-96 shadow-2xl fade-in" style="animation-duration: 0.2s">
@@ -380,7 +379,6 @@ let simData = { actual: [], simulated: [], n: 0, params: null };
 let ouChartInstance = null;
 let residualChartInstance = null;
 
-// 查看器内部变换状态
 let viewerScale = 1.0;
 let viewerPanX = 0;
 let viewerPanY = 0;
@@ -635,12 +633,31 @@ function exportXLSX() {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'VTH Data');
+  
+  const p = simData.params;
+  const paramData = [
+    ['OU Process Parameters'],
+    [''],
+    ['Parameter', 'Value'],
+    ['Slope a', p.a],
+    ['Intercept b', p.b],
+    ['Std Dev sd(e)', p.sd_e],
+    ['R-squared', p.r2],
+    [''],
+    ['Mean Reversion Rate θ', p.theta],
+    ['Long-term Mean μ', p.mu],
+    ['Noise Intensity σ', p.sigma],
+    [''],
+    ['Time Step Δt', p.deltaT],
+    ['Data Points n', p.n],
+    ['Random Seed', p.hasSeed ? p.seed : 'Random']
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(paramData);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Parameters');
+
   XLSX.writeFile(wb, `ou_process_data_n${simData.n}.xlsx`);
 }
 
-// ==========================================
-// 核心修复①：完整多分辨率、多种格式的离屏高级导出系统
-// ==========================================
 function openExportModal() {
   document.getElementById('export-modal').classList.remove('hidden');
 }
@@ -655,12 +672,10 @@ function executeAdvancedExport() {
   const format = document.getElementById('export-format').value;
   const scale = parseFloat(document.getElementById('export-scale').value) || 1;
   
-  // 创建离屏专用的 Canvas 节点
   const hiddenContainer = document.getElementById('hidden-export-container');
   hiddenContainer.innerHTML = ''; 
   const offscreenCanvas = document.createElement('canvas');
   
-  // 依据原有高宽比例对离屏 Canvas 进行高清晰度倍数放大
   const sourceCanvas = document.getElementById('ou-chart');
   const targetWidth = sourceCanvas.clientWidth * scale;
   const targetHeight = sourceCanvas.clientHeight * scale;
@@ -669,15 +684,12 @@ function executeAdvancedExport() {
   offscreenCanvas.height = targetHeight;
   hiddenContainer.appendChild(offscreenCanvas);
   
-  // 深度复制原有图表配置，对其字体、线宽和间距等进行高DPI自适应提升
   const clonedConfig = JSON.parse(JSON.stringify(ouChartInstance.config));
   
-  // 确保离屏渲染时图表动画关闭，防止出现下载黑屏或空白
   clonedConfig.options.animation = false;
   clonedConfig.options.responsive = false;
   clonedConfig.options.maintainAspectRatio = false;
   
-  // 配置图表底层的基础白背景渲染插件
   clonedConfig.plugins = [{
     id: 'custom_canvas_background_color',
     beforeDraw: (chart) => {
@@ -690,11 +702,9 @@ function executeAdvancedExport() {
     }
   }];
   
-  // 提升图表线宽以在高分辨率下保持质感
   clonedConfig.data.datasets[0].borderWidth = 1.5 * scale;
   clonedConfig.data.datasets[1].borderWidth = 1.5 * scale;
   
-  // 自适应放大所有坐标轴的 Label 与 Grid 比例
   if (clonedConfig.options.scales) {
     Object.keys(clonedConfig.options.scales).forEach(key => {
       const scaleOpts = clonedConfig.options.scales[key];
@@ -702,24 +712,18 @@ function executeAdvancedExport() {
     });
   }
   
-  // 创建临时 Chart 实例渲染高分辨率
   const tempChart = new Chart(offscreenCanvas.getContext('2d'), clonedConfig);
   
-  // 延迟等候渲染帧写入完毕
   setTimeout(() => {
     const filename = `ou_process_plot_scale${scale}x_${Date.now()}`;
     
     if (format === 'image/tiff') {
-      // 通过 UTIF.js 库无损压制出 publication 级别的专业 TIF 二进制矩阵
       const ctx = offscreenCanvas.getContext('2d');
       const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-      
-      // UTIF.encodeImage 需要像素点的连续 ArrayBuffer 数组
       const tiffBuffer = UTIF.encodeImage(imgData.data, targetWidth, targetHeight);
       const blob = new Blob([tiffBuffer], { type: 'image/tiff' });
       triggerBinaryDownload(blob, `${filename}.tif`);
     } else {
-      // PNG 或 JPEG 原生安全转码下载
       const dataUrl = offscreenCanvas.toDataURL(format, format === 'image/jpeg' ? 0.95 : 1.0);
       const link = document.createElement('a');
       link.download = format === 'image/jpeg' ? `${filename}.jpg` : `${filename}.png`;
@@ -729,7 +733,6 @@ function executeAdvancedExport() {
       document.body.removeChild(link);
     }
     
-    // 释放资源
     tempChart.destroy();
     hiddenContainer.innerHTML = '';
     closeExportModal();
@@ -746,20 +749,14 @@ function triggerBinaryDownload(blob, fullFilename) {
   URL.revokeObjectURL(link.href);
 }
 
-// ==========================================
-// 核心修复②：完美锁定物理中心的无位移、无偏移高级图表缩放系统
-// ==========================================
 function zoomChart() {
   if (!ouChartInstance) return;
   
-  // 显示全屏蒙层
   const viewer = document.getElementById('fullscreen-viewer');
   viewer.classList.remove('hidden');
   
-  // 重置查看器坐标系变量
   resetViewerTransform();
   
-  // 离屏将原有图表完美1:1临摹映射至全屏 Canvas
   const vCanvas = document.getElementById('viewer-canvas');
   const sourceCanvas = document.getElementById('ou-chart');
   
@@ -776,7 +773,6 @@ function zoomChart() {
 
 function updateViewerStyle() {
   const canvas = document.getElementById('viewer-canvas');
-  // 利用 transform-origin 结合 translate 控制轴距。确保无论如何缩放，全屏容器中心就是原点，解决左上角漂移
   canvas.style.transform = `translate(${viewerPanX}px, ${viewerPanY}px) scale(${viewerScale})`;
   document.getElementById('zoom-percentage-badge').textContent = `${Math.round(viewerScale * 100)}%`;
 }
@@ -800,15 +796,12 @@ function closeViewer() {
 function setupViewerListeners() {
   const container = document.getElementById('viewer-img-container');
   
-  // 移除既往可能残存的监听器
-  container.on組織wheel = null;
+  container.onwheel = null;
   container.onmousedown = null;
   
-  // 鼠标滚轮进行绝对物理中心点缩放
   container.addEventListener('wheel', (e) => {
     e.preventDefault();
     const zoomIntensity = 0.08;
-    // 依据滚轮方向调整缩放
     if (e.deltaY < 0) {
       viewerScale = Math.min(10, viewerScale + zoomIntensity);
     } else {
@@ -817,7 +810,6 @@ function setupViewerListeners() {
     updateViewerStyle();
   }, { passive: false });
 
-  // 鼠标点击平移图表
   container.addEventListener('mousedown', (e) => {
     isViewerDragging = true;
     startX = e.clientX - viewerPanX;
@@ -836,7 +828,6 @@ function setupViewerListeners() {
   });
 }
 
-// 绑定全局拖拽进入效果
 document.addEventListener('DOMContentLoaded', () => {
   const zone = document.querySelector('.drop-zone');
   if(!zone) return;

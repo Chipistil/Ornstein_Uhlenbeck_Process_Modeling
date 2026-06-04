@@ -236,11 +236,11 @@
           <div class="flex gap-2">
             <button onclick="zoomChart()" class="btn-secondary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
-              🔍 放大查看
+              View Fullscreen
             </button>
             <button onclick="downloadChart()" class="btn-primary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-              📥 下载图表
+              Download Chart
             </button>
           </div>
         </div>
@@ -288,10 +288,8 @@
   </footer>
 
 <script>
-/* ========== State ========== */
 let simData = { actual: [], simulated: [], n: 0, params: null };
 
-/* ========== File Handling ========== */
 function handleFile(input) {
   const file = input.files[0];
   if (!file) return;
@@ -317,7 +315,6 @@ function handleFile(input) {
   reader.readAsText(file);
 }
 
-/* ========== Gaussian Random ========== */
 function gaussRand() {
   let u = 0, v = 0;
   while (u === 0) u = Math.random();
@@ -325,7 +322,6 @@ function gaussRand() {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-/* ========== Seeded PRNG (simple LCG) ========== */
 function createLCG(seed) {
   let s = seed % 2147483647;
   if (s <= 0) s += 2147483646;
@@ -345,7 +341,6 @@ function createSeededGauss(seed) {
   };
 }
 
-/* ========== Main Simulation ========== */
 async function runSimulation() {
   if (!simData.actual || simData.actual.length < 3) {
     alert('Please upload a valid VTH data file with at least 3 data points.');
@@ -365,7 +360,6 @@ async function runSimulation() {
   const n = V.length;
   simData.n = n;
 
-  /* Linear Regression: V[1:] ~ V[:-1] */
   document.getElementById('run-status').textContent = 'Linear regression...';
   document.getElementById('run-progress-bar').style.width = '15%';
   await new Promise(r => setTimeout(r, 30));
@@ -383,7 +377,6 @@ async function runSimulation() {
   const b = (Sy - a * Sx) / nn;
   const sd_e = Math.sqrt((nn * Syy - Sy * Sy - a * (nn * Sxy - Sx * Sy)) / (nn * (nn - 2)));
 
-  /* R-squared */
   const meanY = Sy / (n - 1);
   let ssTot = 0, ssRes = 0;
   for (let i = 0; i < n - 1; i++) {
@@ -405,7 +398,6 @@ async function runSimulation() {
   document.getElementById('run-progress-bar').style.width = '50%';
   await new Promise(r => setTimeout(r, 30));
 
-  /* OU Simulation */
   const gaussFn = hasSeed ? createSeededGauss(parseInt(seedInput)) : gaussRand;
   const simulated = new Array(n);
   simulated[0] = V[0];
@@ -421,10 +413,8 @@ async function runSimulation() {
   document.getElementById('run-progress-bar').style.width = '80%';
   await new Promise(r => setTimeout(r, 30));
 
-  /* UI Render */
   document.getElementById('results').classList.remove('hidden');
 
-  /* Step 2: Regression */
   document.getElementById('r-n').textContent = n.toLocaleString();
   document.getElementById('r-a').textContent = a.toFixed(6);
   document.getElementById('r-b').textContent = b.toFixed(6);
@@ -456,7 +446,6 @@ async function runSimulation() {
     `  = <span class="text-gold font-bold">${sd_e.toFixed(6)}</span><br><br>` +
     `R² = <span style="color:#16a34a" class="font-bold">${r2.toFixed(6)}</span>`;
 
-  /* Step 3: OU Parameters */
   document.getElementById('ou-theta').textContent = theta.toFixed(6);
   document.getElementById('ou-mu').textContent = mu.toFixed(6);
   document.getElementById('ou-sigma').textContent = sigma.toFixed(6);
@@ -467,17 +456,14 @@ async function runSimulation() {
     `μ = b / (1 - a) = ${b.toFixed(6)} / (1 - ${a.toFixed(6)}) = <span class="text-rose font-bold">${mu.toFixed(6)}</span><br>` +
     `σ = sd(e) / √Δt = ${sd_e.toFixed(6)} / √${deltaT} = <span class="text-gold font-bold">${sigma.toFixed(6)}</span><br><br>` +
     `<div class="text-muted font-bold mb-1">[Physical Interpretation]</div>` +
-    `• Mean Reversion Rate (θ): The speed at which VTH returns toward the long-term equilibrium. Higher values imply a stronger rigid spring back effect.<br>` +
+    `• Mean Reversion Rate (θ): The speed at which VTH returns toward the long-term equilibrium.<br>` +
     `• Long-term Mean (μ): The stable equilibrium constant baseline level of VTH threshold voltage.<br>` +
-    `• Noise Intensity (σ): Volatility amplitude of background random thermal or electrical traps charging disturbance noise dynamics.`;
+    `• Noise Intensity (σ): Volatility amplitude of background random disturbances noise dynamics.`;
 
-  /* 动态计算合理的横标轴标签间隔步长，确保最后一项正好展示 */
   const stepSize = Math.max(1, Math.floor(n / 10));
-
-  /* Step 4: Chart rendering (Chart.js) */
-  if (window.mainChart) window.mainChart.destroy();
   const cycleLabels = Array.from({length: n}, (_, i) => i + 1);
   
+  if (window.mainChart) window.mainChart.destroy();
   window.mainChart = new Chart(document.getElementById('ou-chart'), {
     type: 'line',
     data: {
@@ -517,19 +503,7 @@ async function runSimulation() {
       responsive: true,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: {
-          labels: {
-            color: '#7a7570',
-            font: { family: 'Arial', size: 11 },
-            usePointStyle: true,
-            padding: 20
-          }
-        },
-        tooltip: {
-          backgroundColor: '#1a1a1a',
-          titleFont: { family: 'Arial', size: 11 },
-          bodyFont: { family: 'Arial', size: 10 }
-        }
+        legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true, padding: 20 } }
       },
       scales: {
         x: {
@@ -560,7 +534,6 @@ async function runSimulation() {
     }
   });
 
-  /* Residuals */
   const residuals = V.map((v, i) => v - simulated[i]);
   if (window.residualChart) window.residualChart.destroy();
   window.residualChart = new Chart(document.getElementById('residual-chart'), {
@@ -580,11 +553,7 @@ async function runSimulation() {
     },
     options: {
       responsive: true,
-      plugins: {
-        legend: {
-          labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true, padding: 20 }
-        }
-      },
+      plugins: { legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true } } },
       scales: {
         x: {
           title: { display: true, text: 'Cycle', color: '#7a7570', font: { family: 'Arial', size: 11 } },
@@ -614,14 +583,12 @@ async function runSimulation() {
     }
   });
 
-  /* Descriptive Statistics Table */
   const stats = (arr) => {
     const m = arr.reduce((s, v) => s + v, 0) / arr.length;
     const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
     const sd = Math.sqrt(v);
     const sorted = [...arr].sort((a, b) => a - b);
-    const med = sorted.length % 2 === 0 ? 
-      (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
+    const med = sorted.length % 2 === 0 ? (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
     return { mean: m, std: sd, min: sorted[0], max: sorted[sorted.length-1], median: med };
   };
   const sA = stats(V), sS = stats(simulated);
@@ -637,7 +604,6 @@ async function runSimulation() {
     `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Median</td><td class="py-3 px-4 text-center">${f6(sA.median)}</td><td class="py-3 px-4 text-center">${f6(sS.median)}</td></tr>` +
     `</tbody></table>`;
 
-  /* Data Table */
   let tHTML = `<table class="w-full font-mono text-xs data-table"><thead><tr class="text-muted"><th class="py-2.5 px-4 text-left">Cycle</th><th class="py-2.5 px-4 text-center">Actual VTH</th><th class="py-2.5 px-4 text-center">OU Simulated</th><th class="py-2.5 px-4 text-center text-rose">Residual</th></tr></thead><tbody>`;
   const maxRows = Math.min(n, 100);
   for (let i = 0; i < maxRows; i++) {
@@ -655,7 +621,6 @@ async function runSimulation() {
   setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
 }
 
-/* ========== 图片下载与新窗口放大查看功能 ========== */
 function downloadChart() {
   if (!window.mainChart) return;
   const link = document.createElement('a');
@@ -670,26 +635,92 @@ function zoomChart() {
   const newWindow = window.open();
   if (newWindow) {
     newWindow.document.write(`
+      <!DOCTYPE html>
       <html>
         <head>
-          <title>OU Simulation Chart Fullscreen View</title>
+          <title>OU Simulation Chart - Interactive Zoom View</title>
           <style>
-            body { margin: 0; background: #faf8f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-            img { max-width: 100%; height: auto; box-shadow: 0 4px 30px rgba(0,0,0,0.1); border-radius: 8px; background: white; padding: 20px; }
+            body { margin: 0; padding: 0; background: #faf8f5; overflow: hidden; font-family: Arial, sans-serif; height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }
+            #container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; cursor: grab; position: relative; user-select: none; }
+            #container:active { cursor: grabbing; }
+            img { max-width: 90%; max-height: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border-radius: 12px; background: white; padding: 24px; transition: transform 0.05s ease-out; transform-origin: center center; pointer-events: none; }
+            #hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(26,26,26,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); letter-spacing: 0.03em; text-align: center; line-height: 1.5; }
           </style>
         </head>
         <body>
-          <img src="${imgData}" alt="OU Process Plot Fullscreen">
+          <div id="container">
+            <img id="zoomable-img" src="${imgData}" alt="OU Process Plot Fullscreen">
+          </div>
+          <div id="hint">🖱️ Scroll wheel to <b>Zoom In/Out</b> &nbsp;|&nbsp; 🤝 Click & Drag to <b>Pan</b> &nbsp;|&nbsp; 🔄 Double-click to <b>Reset</b></div>
+
+          <script>
+            const container = document.getElementById('container');
+            const img = document.getElementById('zoomable-img');
+
+            let scale = 1;
+            let pointX = 0;
+            let pointY = 0;
+            let startX = 0;
+            let startY = 0;
+            let isDragging = false;
+
+            function updateTransform() {
+              img.style.transform = 'translate(' + pointX + 'px, ' + pointY + 'px) scale(' + scale + ')';
+            }
+
+            container.addEventListener('wheel', function (e) {
+              e.preventDefault();
+              const xs = (e.clientX - pointX) / scale;
+              const ys = (e.clientY - pointY) / scale;
+              const delta = -e.deltaY;
+
+              if (delta > 0) {
+                scale *= 1.15;
+              } else {
+                scale /= 1.15;
+              }
+              scale = Math.min(Math.max(0.4, scale), 15);
+
+              pointX = e.clientX - xs * scale;
+              pointY = e.clientY - ys * scale;
+
+              updateTransform();
+            });
+
+            container.addEventListener('mousedown', function (e) {
+              e.preventDefault();
+              startX = e.clientX - pointX;
+              startY = e.clientY - pointY;
+              isDragging = true;
+            });
+
+            window.addEventListener('mousemove', function (e) {
+              if (!isDragging) return;
+              pointX = e.clientX - startX;
+              pointY = e.clientY - startY;
+              updateTransform();
+            });
+
+            window.addEventListener('mouseup', function () {
+              isDragging = false;
+            });
+
+            container.addEventListener('dblclick', function () {
+              scale = 1;
+              pointX = 0;
+              pointY = 0;
+              updateTransform();
+            });
+          <\/script>
         </body>
       </html>
     `);
     newWindow.document.close();
   } else {
-    alert('新窗口被浏览器阻止了，请允许本站弹出新窗口。');
+    alert('The pop-up window was blocked by your browser. Please allow pop-ups for this website.');
   }
 }
 
-/* ========== Export Logic ========== */
 function exportCSV() {
   if (!simData.actual.length) return;
   let csv = 'Cycle,Actual VTH,OU Simulated,Residual\n';
@@ -716,7 +747,6 @@ function exportXLSX() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'VTH Data');
 
-  // Add parameters sheet
   const p = simData.params;
   const paramData = [
     ['OU Process Parameters'],
@@ -741,7 +771,6 @@ function exportXLSX() {
   XLSX.writeFile(wb, `ou_process_data_n${simData.n}.xlsx`);
 }
 
-/* ========== Drag & Drop ========== */
 document.addEventListener('DOMContentLoaded', () => {
   const zone = document.querySelector('.drop-zone');
   if(!zone) return;

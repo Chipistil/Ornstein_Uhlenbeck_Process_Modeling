@@ -228,8 +228,22 @@
       </div>
 
       <div class="card p-6 mb-8 fade-in">
-        <h3 class="font-display font-700 text-base text-ink mb-1">VTH Comparison Plot</h3>
-        <p class="font-body text-xs text-muted mb-4">Red: actual measurement &middot; Black: OU simulation</p>
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-display font-700 text-base text-ink mb-1">VTH Comparison Plot</h3>
+            <p class="font-body text-xs text-muted">Red: actual measurement &middot; Black: OU simulation</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="zoomChart()" class="btn-secondary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
+              🔍 放大查看
+            </button>
+            <button onclick="downloadChart()" class="btn-primary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              📥 下载图表
+            </button>
+          </div>
+        </div>
         <canvas id="ou-chart" height="100"></canvas>
       </div>
 
@@ -457,6 +471,9 @@ async function runSimulation() {
     `• Long-term Mean (μ): The stable equilibrium constant baseline level of VTH threshold voltage.<br>` +
     `• Noise Intensity (σ): Volatility amplitude of background random thermal or electrical traps charging disturbance noise dynamics.`;
 
+  /* 动态计算合理的横标轴标签间隔步长，确保最后一项正好展示 */
+  const stepSize = Math.max(1, Math.floor(n / 10));
+
   /* Step 4: Chart rendering (Chart.js) */
   if (window.mainChart) window.mainChart.destroy();
   const cycleLabels = Array.from({length: n}, (_, i) => i + 1);
@@ -518,7 +535,21 @@ async function runSimulation() {
         x: {
           title: { display: true, text: 'Cycles', color: '#7a7570', font: { family: 'Arial', size: 11 } },
           grid: { color: '#f0ece4' },
-          ticks: { color: '#94a3b8', font: { size: 9 }, maxTicksLimit: 20 }
+          bounds: 'data',
+          min: 1,
+          max: n,
+          ticks: {
+            color: '#94a3b8', 
+            font: { size: 9 },
+            autoSkip: false,
+            callback: function(value, index, ticks) {
+              const val = index + 1;
+              if (val === 1 || val === n || val % stepSize === 0) {
+                return val;
+              }
+              return null;
+            }
+          }
         },
         y: {
           title: { display: true, text: 'VTH (V)', color: '#7a7570', font: { family: 'Arial', size: 11 } },
@@ -558,7 +589,21 @@ async function runSimulation() {
         x: {
           title: { display: true, text: 'Cycle', color: '#7a7570', font: { family: 'Arial', size: 11 } },
           grid: { color: '#f0ece4' },
-          ticks: { color: '#94a3b8', font: { size: 9 }, maxTicksLimit: 20 }
+          bounds: 'data',
+          min: 1,
+          max: n,
+          ticks: {
+            color: '#94a3b8', 
+            font: { size: 9 },
+            autoSkip: false,
+            callback: function(value, index, ticks) {
+              const val = index + 1;
+              if (val === 1 || val === n || val % stepSize === 0) {
+                return val;
+              }
+              return null;
+            }
+          }
         },
         y: {
           title: { display: true, text: 'Residual', color: '#7a7570', font: { family: 'Arial', size: 11 } },
@@ -608,6 +653,40 @@ async function runSimulation() {
   document.getElementById('run-status').textContent = 'Completed!';
   document.getElementById('run-progress-bar').style.width = '100%';
   setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
+}
+
+/* ========== 图片下载与新窗口放大查看功能 ========== */
+function downloadChart() {
+  if (!window.mainChart) return;
+  const link = document.createElement('a');
+  link.download = 'OU_Simulation_Plot.png';
+  link.href = window.mainChart.toBase64Image();
+  link.click();
+}
+
+function zoomChart() {
+  if (!window.mainChart) return;
+  const imgData = window.mainChart.toBase64Image();
+  const newWindow = window.open();
+  if (newWindow) {
+    newWindow.document.write(`
+      <html>
+        <head>
+          <title>OU Simulation Chart Fullscreen View</title>
+          <style>
+            body { margin: 0; background: #faf8f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+            img { max-width: 100%; height: auto; box-shadow: 0 4px 30px rgba(0,0,0,0.1); border-radius: 8px; background: white; padding: 20px; }
+          </style>
+        </head>
+        <body>
+          <img src="${imgData}" alt="OU Process Plot Fullscreen">
+        </body>
+      </html>
+    `);
+    newWindow.document.close();
+  } else {
+    alert('新窗口被浏览器阻止了，请允许本站弹出新窗口。');
+  }
 }
 
 /* ========== Export Logic ========== */

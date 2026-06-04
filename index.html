@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ornstein-Uhlenbeck Process Simulation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script>
+    tailwind.config={theme:{extend:{colors:{cream:'#faf8f5',sand:'#f0ece4',ink:'#1a1a1a',muted:'#7a7570',line:'#e2ddd5',accent:{DEFAULT:'#0d7377',light:'#e6f3f3',dark:'#095456'},rose:'#c2425a',gold:'#c49a2a',sky:'#2563eb'},fontFamily:{display:['Arial','sans-serif'],body:['Arial','sans-serif'],mono:['Arial','sans-serif']}}}}
+  </script>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:'Arial',sans-serif;background:#faf8f5;color:#1a1a1a;margin:0}
+    ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#f0ece4}::-webkit-scrollbar-thumb{background:#c8c2b8;border-radius:3px}
+    .grain::before{content:'';position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+    .fade-in{animation:fadeUp .6s cubic-bezier(.23,1,.32,1) forwards;opacity:0}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+    @keyframes pulse-ring{0%{transform:scale(.9);opacity:.6}50%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.6}}
+    .drop-zone{border:2px dashed #c8c2b8;transition:all .3s ease;background:linear-gradient(135deg,#fff 0%,#faf8f5 100%);position:relative;overflow:hidden}
+    .drop-zone::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(13,115,119,.03),transparent);opacity:0;transition:opacity .3s}
+    .drop-zone:hover,.drop-zone.dragover{border-color:#0d7377;background:linear-gradient(135deg,#e6f3f3,#f0fdfd);transform:translateY(-1px)}
+    .drop-zone:hover::before,.drop-zone.dragover::before{opacity:1}
+    .btn-primary{background:linear-gradient(135deg,#0d7377,#095456);color:#fff;transition:all .3s ease;font-weight:600;letter-spacing:.02em;position:relative;overflow:hidden}
+    .btn-primary::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);transition:left .5s}
+    .btn-primary:hover{background:linear-gradient(135deg,#0a6265,#074446);transform:translateY(-2px);box-shadow:0 8px 24px rgba(13,115,119,.25)}
+    .btn-primary:hover::before{left:100%}
+    .btn-primary:active{transform:translateY(0)}
+    .btn-secondary{background:#fff;color:#0d7377;border:1.5px solid #0d7377;transition:all .3s ease;font-weight:600;letter-spacing:.02em}
+    .btn-secondary:hover{background:#e6f3f3;transform:translateY(-1px);box-shadow:0 4px 12px rgba(13,115,119,.12)}
+    .card{background:#fff;border:1px solid #e2ddd5;border-radius:16px;transition:all .3s ease;position:relative}
+    .card:hover{box-shadow:0 4px 20px rgba(0,0,0,.06);border-color:#d4cfc7}
+    .stat-card{background:#fff;border-radius:16px;position:relative;overflow:hidden;transition:all .3s ease}
+    .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent-line,#0d7377)}
+    .stat-card::after{content:'';position:absolute;top:0;right:0;width:80px;height:80px;background:radial-gradient(circle at top right,var(--accent-glow,rgba(13,115,119,.06)),transparent 70%);pointer-events:none}
+    .stat-card:hover{transform:translateY(-3px);box-shadow:0 8px 28px rgba(0,0,0,.08)}
+    .section-header{position:relative;padding-left:18px}
+    .section-header::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:4px;border-radius:2px;background:linear-gradient(180deg,#0d7377,#2563eb)}
+    .progress-bar{height:6px;background:#e2ddd5;border-radius:3px;overflow:hidden;position:relative}
+    .progress-bar-fill{height:100%;background:linear-gradient(90deg,#0d7377,#2563eb,#0d7377);background-size:200% 100%;animation:shimmer 2s infinite;transition:width .3s;border-radius:3px}
+    input[type="text"],input[type="number"],select{background:#fff!important;border:1.5px solid #e2ddd5!important;color:#1a1a1a!important;border-radius:10px!important}
+    input[type="text"]:focus,input[type="number"]:focus,select:focus{border-color:#0d7377!important;outline:none;box-shadow:0 0 0 3px rgba(13,115,119,.1)!important}
+    .data-table{border-collapse:separate;border-spacing:0}
+    .data-table thead th{background:#faf8f5;position:sticky;top:0;z-index:1}
+    .data-table tbody tr{transition:background .2s}
+    .data-table tbody tr:hover{background:#f8f7f4}
+    .glow-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:10px;font-weight:600;background:rgba(13,115,119,.08);color:#0d7377;border:1px solid rgba(13,115,119,.15)}
+    .glow-dot{width:5px;height:5px;border-radius:50%;background:#0d7377;animation:pulse-ring 2s infinite}
+    .fancy-divider{display:flex;align-items:center;gap:12px;margin:20px 0}
+    .fancy-divider::before,.fancy-divider::after{content:'';flex:1;height:1px;background:linear-gradient(90deg,transparent,#e2ddd5,transparent)}
+    .fancy-divider span{font-family:'Arial';font-size:10px;color:#7a7570;text-transform:uppercase;letter-spacing:.15em}
+  </style>
+</head>
+<body class="grain min-h-screen">
+
+  <header class="border-b border-line bg-white sticky top-0 z-40" style="background:linear-gradient(180deg,#ffffff 0%,#faf8f5 100%)">
+    <div class="max-w-6xl mx-auto px-8 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center" style="background:linear-gradient(135deg,#0d7377,#095456)">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <h1 class="font-display font-800 text-lg text-ink tracking-tight leading-tight">OU Process Simulator</h1>
+          <p class="font-body text-xs text-muted font-medium -mt-0.5">Ornstein-Uhlenbeck VTH Threshold Analysis</p>
+        </div>
+      </div>
+      <div class="glow-badge"><span class="glow-dot"></span><span class="font-mono text-xs">VTH · Mean Reversion</span></div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-8 py-10">
+
+    <div class="mb-10 fade-in">
+      <div class="flex items-center gap-3 mb-1">
+        <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">01</span></span>
+        <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">Data Input</h2>
+      </div>
+      <p class="font-body text-sm text-muted">Upload VTH threshold voltage data file and configure simulation parameters</p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-6 mb-8">
+      <div class="card p-7 fade-in" style="animation-delay:.05s">
+        <h3 class="font-display font-700 text-base text-ink mb-1">VTH Data File</h3>
+        <p class="font-body text-xs text-muted mb-5">Upload <code class="font-mono text-accent bg-accent-light px-2 py-0.5 rounded-md">.txt</code> file containing VTH values (numbers separated by whitespace, newlines, or commas)</p>
+        <div class="drop-zone rounded-xl p-10 text-center cursor-pointer" onclick="document.getElementById('vth-file').click()">
+          <div class="w-16 h-16 rounded-2xl bg-accent-light flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          </div>
+          <p class="text-base text-ink font-medium">Drag & drop or click to upload</p>
+          <p class="text-sm text-muted mt-1">Supports <code class="font-mono text-accent bg-accent-light px-2 py-0.5 rounded-md">.txt</code> plain text</p>
+          <p class="text-xs text-line mt-3 font-mono" id="vth-filename">No file selected</p>
+        </div>
+        <input type="file" id="vth-file" class="hidden" accept=".txt" onchange="handleFile(this)">
+        <div id="file-info" class="hidden mt-4 p-4 rounded-xl bg-sand font-mono text-xs text-muted leading-relaxed"></div>
+      </div>
+
+      <div class="card p-7 fade-in" style="animation-delay:.1s">
+        <h3 class="font-display font-700 text-base text-ink mb-1">Simulation Parameters</h3>
+        <p class="font-body text-xs text-muted mb-5">Configure time step and simulation options</p>
+        <div class="space-y-5">
+          <div>
+            <label class="font-mono text-xs text-muted block mb-2 uppercase tracking-wider">Time Step &Delta;t</label>
+            <input type="number" id="delta-t" value="1" min="0.001" step="0.1" class="w-full rounded-xl px-4 py-3 font-mono text-sm">
+            <p class="font-body text-[11px] text-line mt-1.5">Time interval between successive VTH measurements</p>
+          </div>
+          <div>
+            <label class="font-mono text-xs text-muted block mb-2 uppercase tracking-wider">Random Seed (optional)</label>
+            <input type="number" id="random-seed" placeholder="Leave empty for random" min="0" class="w-full rounded-xl px-4 py-3 font-mono text-sm">
+            <p class="font-body text-[11px] text-line mt-1.5">Set a seed for reproducible simulation results</p>
+          </div>
+        </div>
+
+        <div class="fancy-divider"><span>OU Process Formula</span></div>
+        <div class="bg-sand rounded-xl p-4 font-mono text-xs text-muted leading-loose">
+          <span class="text-accent font-bold">dX(t) = &theta;(&mu; - X(t))dt + &sigma;dW(t)</span><br>
+          <span class="text-muted">Discrete update:</span><br>
+          X(t+1) = X(t)&middot;e<sup>-&theta;&Delta;t</sup> + &mu;(1-e<sup>-&theta;&Delta;t</sup>) + &sigma;&radic;((1-e<sup>-2&theta;&Delta;t</sup>)/(2&theta;))&middot;N(0,1)
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-4 mb-8 fade-in" style="animation-delay:.15s">
+      <button onclick="runSimulation()" class="btn-primary px-10 py-3 rounded-xl font-body text-sm">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Run Simulation
+        </span>
+      </button>
+      <div id="run-progress" class="hidden flex-1">
+        <div class="progress-bar"><div class="progress-bar-fill" id="run-progress-bar" style="width:0%"></div></div>
+        <p class="font-mono text-xs text-muted mt-2" id="run-status">Processing...</p>
+      </div>
+    </div>
+
+    <div id="results" class="hidden">
+
+      <div class="mb-8 fade-in">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">02</span></span>
+          <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">Linear Regression</h2>
+        </div>
+        <p class="font-body text-sm text-muted">V(t+1) = a &middot; V(t) + b + &epsilon;(t), least squares fit</p>
+      </div>
+
+      <div class="grid grid-cols-5 gap-4 mb-8 fade-in">
+        <div class="stat-card card p-5" style="--accent-line:#0d7377;--accent-glow:rgba(13,115,119,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Data Points n</p>
+          <p class="font-display font-800 text-2xl text-accent" id="r-n">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#c2425a;--accent-glow:rgba(194,66,90,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Slope a</p>
+          <p class="font-display font-800 text-2xl text-rose" id="r-a">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#6366f1;--accent-glow:rgba(99,102,241,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Intercept b</p>
+          <p class="font-display font-800 text-2xl" style="color:#6366f1" id="r-b">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#c49a2a;--accent-glow:rgba(196,154,42,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Std Dev &sigma;(e)</p>
+          <p class="font-display font-800 text-2xl text-gold" id="r-sde">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#16a34a;--accent-glow:rgba(22,163,74,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">R&sup2;</p>
+          <p class="font-display font-800 text-2xl" style="color:#16a34a" id="r-r2">—</p>
+        </div>
+      </div>
+
+      <div class="card p-6 mb-10 fade-in">
+        <h3 class="font-display font-700 text-base text-ink mb-4">Intermediate Calculations</h3>
+        <div class="grid grid-cols-5 gap-4">
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sx</p><p class="font-mono text-sm text-ink font-bold" id="r-sx">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sy</p><p class="font-mono text-sm text-ink font-bold" id="r-sy">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sxx</p><p class="font-mono text-sm text-ink font-bold" id="r-sxx">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Syy</p><p class="font-mono text-sm text-ink font-bold" id="r-syy">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sxy</p><p class="font-mono text-sm text-ink font-bold" id="r-sxy">—</p></div>
+        </div>
+        <div class="mt-4 font-mono text-xs text-muted bg-sand rounded-xl p-4 leading-relaxed" id="regression-detail"></div>
+      </div>
+
+      <div class="mb-8 fade-in">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">03</span></span>
+          <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">OU Process Parameters</h2>
+        </div>
+        <p class="font-body text-sm text-muted">Derived from regression coefficients: &theta; = -ln(a)/&Delta;t, &mu; = b/(1-a), &sigma; = sd(e)/&radic;&Delta;t</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-6 mb-8 fade-in">
+        <div class="stat-card card p-6" style="--accent-line:#0d7377;--accent-glow:rgba(13,115,119,.08)">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-mono text-xs text-muted uppercase tracking-wider">Mean Reversion Rate</p>
+            <div class="w-8 h-8 rounded-lg bg-accent-light flex items-center justify-center"><svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
+          </div>
+          <p class="font-display font-800 text-4xl text-accent" id="ou-theta">—</p>
+          <p class="font-mono text-xs text-muted mt-2">&theta; (1/time unit)</p>
+        </div>
+        <div class="stat-card card p-6" style="--accent-line:#c2425a;--accent-glow:rgba(194,66,90,.08)">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-mono text-xs text-muted uppercase tracking-wider">Long-term Mean</p>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(194,66,90,.08)"><svg class="w-4 h-4 text-rose" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg></div>
+          </div>
+          <p class="font-display font-800 text-4xl text-rose" id="ou-mu">—</p>
+          <p class="font-mono text-xs text-muted mt-2">&mu; (VTH units)</p>
+        </div>
+        <div class="stat-card card p-6" style="--accent-line:#c49a2a;--accent-glow:rgba(196,154,42,.08)">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-mono text-xs text-muted uppercase tracking-wider">Noise Intensity</p>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(196,154,42,.08)"><svg class="w-4 h-4 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
+          </div>
+          <p class="font-display font-800 text-4xl text-gold" id="ou-sigma">—</p>
+          <p class="font-mono text-xs text-muted mt-2">&sigma; (VTH/&radic;time)</p>
+        </div>
+      </div>
+
+      <div class="card p-6 mb-10 fade-in">
+        <h3 class="font-display font-700 text-base text-ink mb-4">Parameter Derivation</h3>
+        <div id="ou-detail" class="font-mono text-xs text-muted bg-sand rounded-xl p-5 overflow-auto max-h-60 leading-relaxed"></div>
+      </div>
+
+      <div class="mb-8 fade-in">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">04</span></span>
+          <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">Simulation Results</h2>
+        </div>
+        <p class="font-body text-sm text-muted">Actual VTH data vs OU simulated trajectory</p>
+      </div>
+
+      <div class="card p-6 mb-8 fade-in">
+        <h3 class="font-display font-700 text-base text-ink mb-1">VTH Comparison Plot</h3>
+        <p class="font-body text-xs text-muted mb-4">Red: actual measurement &middot; Black: OU simulation</p>
+        <canvas id="ou-chart" height="100"></canvas>
+      </div>
+
+      <div class="grid grid-cols-2 gap-6 mb-8">
+        <div class="card p-6 fade-in">
+          <h3 class="font-display font-700 text-base text-ink mb-1">Descriptive Statistics</h3>
+          <p class="font-body text-xs text-muted mb-4">Comparison of basic statistics between actual and simulated data</p>
+          <div id="desc-stats-table" class="overflow-x-auto"></div>
+        </div>
+        <div class="card p-6 fade-in" style="animation-delay:.05s">
+          <h3 class="font-display font-700 text-base text-ink mb-1">Residual Analysis</h3>
+          <p class="font-body text-xs text-muted mb-4">Residual = Actual - Simulated</p>
+          <canvas id="residual-chart" height="100"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-6 mb-8 fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-display font-700 text-base text-ink mb-1">Data Table</h3>
+            <p class="font-body text-xs text-muted">Cycle-by-cycle comparison of actual and simulated VTH</p>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="exportCSV()" class="btn-secondary px-5 py-2.5 rounded-xl font-body text-xs">
+              <span class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Export CSV</span>
+            </button>
+            <button onclick="exportXLSX()" class="btn-primary px-5 py-2.5 rounded-xl font-body text-xs">
+              <span class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Export XLSX</span>
+            </button>
+          </div>
+        </div>
+        <div class="overflow-auto max-h-96 rounded-xl border border-line" id="data-table-wrap"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="border-t border-line py-6 mt-10">
+    <div class="max-w-6xl mx-auto px-8 flex items-center justify-between">
+      <p class="font-mono text-xs text-line">OU Process Simulator v1.0 &middot; Browser-based</p>
+      <p class="font-mono text-xs text-line">Open Source &middot; MIT License</p>
+    </div>
+  </footer>
+
+<script>
+/* ========== State ========== */
+let simData = { actual: [], simulated: [], n: 0, params: null };
+
+/* ========== File Handling ========== */
+function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('vth-filename').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const pattern = /-?\d+\.?\d*/g;
+    const matches = text.match(pattern);
+    if (!matches || matches.length < 3) {
+      alert('Could not parse enough numeric values from the file. Need at least 3 data points.');
+      return;
+    }
+    simData.actual = matches.map(Number);
+    const info = document.getElementById('file-info');
+    info.classList.remove('hidden');
+    info.innerHTML =
+      `<span class="text-accent font-bold">File loaded:</span> ${file.name}<br>` +
+      `<span class="text-accent font-bold">Data points:</span> ${simData.actual.length.toLocaleString()}<br>` +
+      `<span class="text-accent font-bold">Range:</span> [${Math.min(...simData.actual).toFixed(4)}, ${Math.max(...simData.actual).toFixed(4)}]<br>` +
+      `<span class="text-accent font-bold">First 5:</span> ${simData.actual.slice(0,5).map(v=>v.toFixed(4)).join(', ')} ...`;
+  };
+  reader.readAsText(file);
+}
+
+/* ========== Gaussian Random ========== */
+function gaussRand() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+/* ========== Seeded PRNG (simple LCG) ========== */
+function createLCG(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return function() {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+function createSeededGauss(seed) {
+  const rng = createLCG(seed);
+  return function() {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  };
+}
+
+/* ========== Main Simulation ========== */
+async function runSimulation() {
+  if (!simData.actual || simData.actual.length < 3) {
+    alert('Please upload a valid VTH data file with at least 3 data points.');
+    return;
+  }
+
+  const deltaT = parseFloat(document.getElementById('delta-t').value) || 1;
+  const seedInput = document.getElementById('random-seed').value;
+  const hasSeed = seedInput !== '' && !isNaN(parseInt(seedInput));
+
+  document.getElementById('run-progress').classList.remove('hidden');
+  document.getElementById('run-status').textContent = 'Reading data...';
+  document.getElementById('run-progress-bar').style.width = '5%';
+  await new Promise(r => setTimeout(r, 30));
+
+  const V = simData.actual;
+  const n = V.length;
+  simData.n = n;
+
+  /* Linear Regression: V[1:] ~ V[:-1] */
+  document.getElementById('run-status').textContent = 'Linear regression...';
+  document.getElementById('run-progress-bar').style.width = '15%';
+  await new Promise(r => setTimeout(r, 30));
+
+  let Sx = 0, Sy = 0, Sxx = 0, Syy = 0, Sxy = 0;
+  for (let i = 0; i < n - 1; i++) {
+    Sx += V[i + 1];
+    Sy += V[i];
+    Sxx += V[i + 1] * V[i + 1];
+    Syy += V[i] * V[i];
+    Sxy += V[i] * V[i + 1];
+  }
+  const nn = n;
+  const a = (nn * Sxy - Sx * Sy) / (nn * Sxx - Sx * Sx);
+  const b = (Sy - a * Sx) / nn;
+  const sd_e = Math.sqrt((nn * Syy - Sy * Sy - a * (nn * Sxy - Sx * Sy)) / (nn * (nn - 2)));
+
+  /* R-squared */
+  const meanY = Sy / (n - 1);
+  let ssTot = 0, ssRes = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const predicted = a * V[i] + b;
+    ssRes += (V[i + 1] - predicted) ** 2;
+    ssTot += (V[i + 1] - meanY) ** 2;
+  }
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+
+  document.getElementById('run-status').textContent = 'Computing OU parameters...';
+  document.getElementById('run-progress-bar').style.width = '35%';
+  await new Promise(r => setTimeout(r, 30));
+
+  const theta = -Math.log(a) / deltaT;
+  const mu = b / (1 - a);
+  const sigma = sd_e / Math.sqrt(deltaT);
+
+  document.getElementById('run-status').textContent = 'Simulating OU process...';
+  document.getElementById('run-progress-bar').style.width = '50%';
+  await new Promise(r => setTimeout(r, 30));
+
+  /* OU Simulation */
+  const gaussFn = hasSeed ? createSeededGauss(parseInt(seedInput)) : gaussRand;
+  const simulated = new Array(n);
+  simulated[0] = V[0];
+  const expTheta = Math.exp(-theta * deltaT);
+  const sqrtTerm = Math.sqrt((1 - Math.exp(-2 * theta * deltaT)) / (2 * theta));
+  for (let t = 0; t < n - 1; t++) {
+    simulated[t + 1] = simulated[t] * expTheta + mu * (1 - expTheta) + sigma * sqrtTerm * gaussFn();
+  }
+  simData.simulated = simulated;
+  simData.params = { a, b, sd_e, theta, mu, sigma, r2, Sx, Sy, Sxx, Syy, Sxy, deltaT, n, hasSeed, seed: hasSeed ? parseInt(seedInput) : null };
+
+  document.getElementById('run-status').textContent = 'Updating UI...';
+  document.getElementById('run-progress-bar').style.width = '80%';
+  await new Promise(r => setTimeout(r, 30));
+
+  /* UI Render */
+  document.getElementById('results').classList.remove('hidden');
+
+  /* Step 2: Regression */
+  document.getElementById('r-n').textContent = n.toLocaleString();
+  document.getElementById('r-a').textContent = a.toFixed(6);
+  document.getElementById('r-b').textContent = b.toFixed(6);
+  document.getElementById('r-sde').textContent = sd_e.toFixed(6);
+  document.getElementById('r-r2').textContent = r2.toFixed(6);
+  document.getElementById('r-sx').textContent = Sx.toFixed(2);
+  document.getElementById('r-sy').textContent = Sy.toFixed(2);
+  document.getElementById('r-sxx').textContent = Sxx.toFixed(2);
+  document.getElementById('r-syy').textContent = Syy.toFixed(2);
+  document.getElementById('r-sxy').textContent = Sxy.toFixed(2);
+
+  document.getElementById('regression-detail').innerHTML = 
+    `<div class="text-accent mb-2 font-bold">[Linear Regression: V(t+1) = a·V(t) + b]</div>` +
+    `n = ${n} (uses n data points, n-1 regression pairs)<br><br>` +
+    `<div style="color:#6366f1" class="mb-2 font-bold">[Step 1: Sums]</div>` +
+    `Sx = ΣV[1:] = ${Sx.toFixed(4)}<br>` +
+    `Sy = ΣV[:-1] = ${Sy.toFixed(4)}<br>` +
+    `Sxx = ΣV[1:]² = ${Sxx.toFixed(4)}<br>` +
+    `Syy = ΣV[:-1]² = ${Syy.toFixed(4)}<br>` +
+    `Sxy = ΣV[:-1]·V[1:] = ${Sxy.toFixed(4)}<br><br>` +
+    `<div style="color:#6366f1" class="mb-2 font-bold">[Step 2: Regression Coefficients]</div>` +
+    `a = (n·Sxy - Sx·Sy) / (n·Sxx - Sx²)<br>` +
+    `  = (${n}×${Sxy.toFixed(4)} - ${Sx.toFixed(4)}×${Sy.toFixed(4)}) / (${n}×${Sxx.toFixed(4)} - ${Sx.toFixed(4)}²)<br>` +
+    `  = <span class="text-rose font-bold">${a.toFixed(6)}</span><br><br>` +
+    `b = (Sy - a·Sx) / n<br>` +
+    `  = (${Sy.toFixed(4)} - ${a.toFixed(6)}×${Sx.toFixed(4)}) / ${n}<br>` +
+    `  = <span style="color:#6366f1" class="font-bold">${b.toFixed(6)}</span><br><br>` +
+    `sd(e) = √((n·Syy - Sy² - a·(n·Sxy - Sx·Sy)) / (n·(n-2)))<br>` +
+    `  = <span class="text-gold font-bold">${sd_e.toFixed(6)}</span><br><br>` +
+    `R² = <span style="color:#16a34a" class="font-bold">${r2.toFixed(6)}</span>`;
+
+  /* Step 3: OU Parameters */
+  document.getElementById('ou-theta').textContent = theta.toFixed(6);
+  document.getElementById('ou-mu').textContent = mu.toFixed(6);
+  document.getElementById('ou-sigma').textContent = sigma.toFixed(6);
+
+  document.getElementById('ou-detail').innerHTML = 
+    `<div class="text-accent mb-2 font-bold">[OU Parameter Derivation]</div>` +
+    `θ = -ln(a) / Δt = -ln(${a.toFixed(6)}) / ${deltaT} = <span class="text-accent font-bold">${theta.toFixed(6)}</span><br>` +
+    `μ = b / (1 - a) = ${b.toFixed(6)} / (1 - ${a.toFixed(6)}) = <span class="text-rose font-bold">${mu.toFixed(6)}</span><br>` +
+    `σ = sd(e) / √Δt = ${sd_e.toFixed(6)} / √${deltaT} = <span class="text-gold font-bold">${sigma.toFixed(6)}</span><br><br>` +
+    `<div class="text-muted font-bold mb-1">[Physical Interpretation]</div>` +
+    `• Mean Reversion Rate (θ): The speed at which VTH returns toward the long-term equilibrium. Higher values imply a stronger rigid spring back effect.<br>` +
+    `• Long-term Mean (μ): The stable equilibrium constant baseline level of VTH threshold voltage.<br>` +
+    `• Noise Intensity (σ): Volatility amplitude of background random thermal or electrical traps charging disturbance noise dynamics.`;
+
+  /* Step 4: Chart rendering (Chart.js) */
+  if (window.mainChart) window.mainChart.destroy();
+  const cycleLabels = Array.from({length: n}, (_, i) => i + 1);
+  
+  window.mainChart = new Chart(document.getElementById('ou-chart'), {
+    type: 'line',
+    data: {
+      labels: cycleLabels,
+      datasets: [
+        {
+          label: 'Actual VTH Data',
+          data: V,
+          borderColor: '#c2425a',
+          backgroundColor: '#fff',
+          pointBorderColor: '#c2425a',
+          pointBackgroundColor: '#fff',
+          pointBorderWidth: 1.2,
+          pointRadius: 1.8,
+          pointHoverRadius: 4,
+          borderWidth: 1.2,
+          tension: 0,
+          fill: false
+        },
+        {
+          label: 'OU Simulated',
+          data: simulated,
+          borderColor: '#1a1a1a',
+          backgroundColor: '#fff',
+          pointBorderColor: '#1a1a1a',
+          pointBackgroundColor: '#fff',
+          pointBorderWidth: 1.2,
+          pointRadius: 1.8,
+          pointHoverRadius: 4,
+          borderWidth: 1.2,
+          tension: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#7a7570',
+            font: { family: 'Arial', size: 11 },
+            usePointStyle: true,
+            padding: 20
+          }
+        },
+        tooltip: {
+          backgroundColor: '#1a1a1a',
+          titleFont: { family: 'Arial', size: 11 },
+          bodyFont: { family: 'Arial', size: 10 }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Cycles', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          ticks: { color: '#94a3b8', font: { size: 9 }, maxTicksLimit: 20 }
+        },
+        y: {
+          title: { display: true, text: 'VTH (V)', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        }
+      }
+    }
+  });
+
+  /* Residuals */
+  const residuals = V.map((v, i) => v - simulated[i]);
+  if (window.residualChart) window.residualChart.destroy();
+  window.residualChart = new Chart(document.getElementById('residual-chart'), {
+    type: 'line',
+    data: {
+      labels: cycleLabels,
+      datasets: [{
+        label: 'Residual (Actual - Simulated)',
+        data: residuals,
+        borderColor: 'rgba(13,115,119,0.7)',
+        backgroundColor: 'rgba(13,115,119,0.06)',
+        pointRadius: 0,
+        borderWidth: 1.2,
+        tension: 0.1,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true, padding: 20 }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Cycle', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          ticks: { color: '#94a3b8', font: { size: 9 }, maxTicksLimit: 20 }
+        },
+        y: {
+          title: { display: true, text: 'Residual', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        }
+      }
+    }
+  });
+
+  /* Descriptive Statistics Table */
+  const stats = (arr) => {
+    const m = arr.reduce((s, v) => s + v, 0) / arr.length;
+    const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
+    const sd = Math.sqrt(v);
+    const sorted = [...arr].sort((a, b) => a - b);
+    const med = sorted.length % 2 === 0 ? 
+      (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
+    return { mean: m, std: sd, min: sorted[0], max: sorted[sorted.length-1], median: med };
+  };
+  const sA = stats(V), sS = stats(simulated);
+  const f6 = v => v.toFixed(6);
+  document.getElementById('desc-stats-table').innerHTML = 
+    `<table class="w-full font-mono text-xs data-table">` +
+    `<thead><tr class="text-muted"><th class="py-3 px-4 text-left rounded-tl-lg" style="background:#faf8f5">Statistic</th><th class="py-3 px-4 text-center" style="background:#faf8f5">Actual</th><th class="py-3 px-4 text-center rounded-tr-lg" style="background:#faf8f5">Simulated</th></tr></thead>` +
+    `<tbody>` +
+    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Mean</td><td class="py-3 px-4 text-center text-accent">${f6(sA.mean)}</td><td class="py-3 px-4 text-center text-accent">${f6(sS.mean)}</td></tr>` +
+    `<tr style="background:#faf8f5"><td class="py-3 px-4 font-medium">Std Dev</td><td class="py-3 px-4 text-center">${f6(sA.std)}</td><td class="py-3 px-4 text-center">${f6(sS.std)}</td></tr>` +
+    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Min</td><td class="py-3 px-4 text-center">${f6(sA.min)}</td><td class="py-3 px-4 text-center">${f6(sS.min)}</td></tr>` +
+    `<tr style="background:#faf8f5"><td class="py-3 px-4 font-medium">Max</td><td class="py-3 px-4 text-center">${f6(sA.max)}</td><td class="py-3 px-4 text-center">${f6(sS.max)}</td></tr>` +
+    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Median</td><td class="py-3 px-4 text-center">${f6(sA.median)}</td><td class="py-3 px-4 text-center">${f6(sS.median)}</td></tr>` +
+    `</tbody></table>`;
+
+  /* Data Table */
+  let tHTML = `<table class="w-full font-mono text-xs data-table"><thead><tr class="text-muted"><th class="py-2.5 px-4 text-left">Cycle</th><th class="py-2.5 px-4 text-center">Actual VTH</th><th class="py-2.5 px-4 text-center">OU Simulated</th><th class="py-2.5 px-4 text-center text-rose">Residual</th></tr></thead><tbody>`;
+  const maxRows = Math.min(n, 100);
+  for (let i = 0; i < maxRows; i++) {
+    const bg = i % 2 === 0 ? '#fff' : '#faf8f5';
+    tHTML += `<tr style="background:${bg}"><td class="py-2.5 px-4 text-muted">${i+1}</td><td class="py-2.5 px-4 text-center font-medium">${V[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-accent">${simulated[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-rose">${residuals[i].toFixed(4)}</td></tr>`;
+  }
+  if (n > 100) {
+    tHTML += `<tr style="background:#fff"><td colspan="4" class="py-3 px-4 text-center text-muted italic">Showing first 100 rows (${n.toLocaleString()} total points) ...</td></tr>`;
+  }
+  tHTML += `</tbody></table>`;
+  document.getElementById('data-table-wrap').innerHTML = tHTML;
+
+  document.getElementById('run-status').textContent = 'Completed!';
+  document.getElementById('run-progress-bar').style.width = '100%';
+  setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
+}
+
+/* ========== Export Logic ========== */
+function exportCSV() {
+  if (!simData.actual.length) return;
+  let csv = 'Cycle,Actual VTH,OU Simulated,Residual\n';
+  for (let i = 0; i < simData.n; i++) {
+    const res = simData.actual[i] - simData.simulated[i];
+    csv += `${i + 1},${simData.actual[i]},${simData.simulated[i]},${res}\n`;
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', `ou_process_data_n${simData.n}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportXLSX() {
+  if (!simData.actual.length) return;
+  const data = [['Cycle', 'Actual VTH', 'OU Simulated', 'Residual']];
+  for (let i = 0; i < simData.n; i++) {
+    data.push([i + 1, simData.actual[i], simData.simulated[i], simData.actual[i] - simData.simulated[i]]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'VTH Data');
+
+  // Add parameters sheet
+  const p = simData.params;
+  const paramData = [
+    ['OU Process Parameters'],
+    [''],
+    ['Parameter', 'Value'],
+    ['Slope a', p.a],
+    ['Intercept b', p.b],
+    ['Std Dev sd(e)', p.sd_e],
+    ['R-squared', p.r2],
+    [''],
+    ['Mean Reversion Rate θ', p.theta],
+    ['Long-term Mean μ', p.mu],
+    ['Noise Intensity σ', p.sigma],
+    [''],
+    ['Time Step Δt', p.deltaT],
+    ['Data Points n', p.n],
+    ['Random Seed', p.hasSeed ? p.seed : 'Random']
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(paramData);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Parameters');
+
+  XLSX.writeFile(wb, `ou_process_data_n${simData.n}.xlsx`);
+}
+
+/* ========== Drag & Drop ========== */
+document.addEventListener('DOMContentLoaded', () => {
+  const zone = document.querySelector('.drop-zone');
+  if(!zone) return;
+  ['dragenter', 'dragover'].forEach(name => {
+    zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }, false);
+  });
+  ['dragleave', 'drop'].forEach(name => {
+    zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }, false);
+  });
+  zone.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if(files.length) {
+      document.getElementById('vth-file').files = files;
+      handleFile(document.getElementById('vth-file'));
+    }
+  }, false);
+});
+</script>
+</body>
+</html>

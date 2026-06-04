@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- UTIF.js standard library for TIF image encoding support -->
   <script src="https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.min.js"></script>
   <script>
     tailwind.config={theme:{extend:{colors:{cream:'#faf8f5',sand:'#f0ece4',ink:'#1a1a1a',muted:'#7a7570',line:'#e2ddd5',accent:{DEFAULT:'#0d7377',light:'#e6f3f3',dark:'#095456'},rose:'#c2425a',gold:'#c49a2a',sky:'#2563eb'},fontFamily:{display:['Arial','sans-serif'],body:['Arial','sans-serif'],mono:['Arial','sans-serif']}}}}
@@ -72,6 +73,7 @@
   </header>
 
   <main class="max-w-6xl mx-auto px-8 py-10">
+
     <div class="mb-10 fade-in">
       <div class="flex items-center gap-3 mb-1">
         <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">01</span></span>
@@ -83,7 +85,7 @@
     <div class="grid grid-cols-2 gap-6 mb-8">
       <div class="card p-7 fade-in" style="animation-delay:.05s">
         <h3 class="font-display font-700 text-base text-ink mb-1">VTH Data File</h3>
-        <p class="font-body text-xs text-muted mb-5">Upload <code class="font-mono text-accent bg-accent-light px-2 py-0.5 rounded-md">.txt</code> file containing VTH values</p>
+        <p class="font-body text-xs text-muted mb-5">Upload <code class="font-mono text-accent bg-accent-light px-2 py-0.5 rounded-md">.txt</code> file containing VTH values (numbers separated by whitespace, newlines, or commas)</p>
         <div class="drop-zone rounded-xl p-10 text-center cursor-pointer" onclick="document.getElementById('vth-file').click()">
           <div class="w-16 h-16 rounded-2xl bg-accent-light flex items-center justify-center mx-auto mb-4">
             <svg class="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
@@ -103,109 +105,220 @@
           <div>
             <label class="font-mono text-xs text-muted block mb-2 uppercase tracking-wider">Time Step &Delta;t</label>
             <input type="number" id="delta-t" value="1" min="0.001" step="0.1" class="w-full rounded-xl px-4 py-3 font-mono text-sm">
+            <p class="font-body text-[11px] text-line mt-1.5">Time interval between successive VTH measurements</p>
           </div>
           <div>
             <label class="font-mono text-xs text-muted block mb-2 uppercase tracking-wider">Random Seed (optional)</label>
             <input type="number" id="random-seed" placeholder="Leave empty for random" min="0" class="w-full rounded-xl px-4 py-3 font-mono text-sm">
+            <p class="font-body text-[11px] text-line mt-1.5">Set a seed for reproducible simulation results</p>
           </div>
         </div>
+
         <div class="fancy-divider"><span>OU Process Formula</span></div>
         <div class="bg-sand rounded-xl p-4 font-mono text-xs text-muted leading-loose">
-          <span class="text-accent font-bold">dX(t) = &theta;(&mu; - X(t))dt + &sigma;dW(t)</span>
+          <span class="text-accent font-bold">dX(t) = &theta;(&mu; - X(t))dt + &sigma;dW(t)</span><br>
+          <span class="text-muted">Discrete update:</span><br>
+          X(t+1) = X(t)&middot;e<sup>-&theta;&Delta;t</sup> + &mu;(1-e<sup>-&theta;&Delta;t</sup>) + &sigma;&radic;((1-e<sup>-2&theta;&Delta;t</sup>)/(2&theta;))&middot;N(0,1)
         </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-4 mb-8 fade-in">
-      <button onclick="runSimulation()" class="btn-primary px-10 py-3 rounded-xl font-body text-sm">Run Simulation</button>
+    <div class="flex items-center gap-4 mb-8 fade-in" style="animation-delay:.15s">
+      <button onclick="runSimulation()" class="btn-primary px-10 py-3 rounded-xl font-body text-sm">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Run Simulation
+        </span>
+      </button>
       <div id="run-progress" class="hidden flex-1">
         <div class="progress-bar"><div class="progress-bar-fill" id="run-progress-bar" style="width:0%"></div></div>
+        <p class="font-mono text-xs text-muted mt-2" id="run-status">Processing...</p>
       </div>
     </div>
 
     <div id="results" class="hidden">
-      <div class="grid grid-cols-5 gap-4 mb-8">
-        <div class="stat-card card p-5" style="--accent-line:#0d7377;"><p class="font-mono text-xs text-muted uppercase mb-2">Data Points n</p><p class="font-display font-800 text-2xl text-accent" id="r-n">—</p></div>
-        <div class="stat-card card p-5" style="--accent-line:#c2425a;"><p class="font-mono text-xs text-muted uppercase mb-2">Slope a</p><p class="font-display font-800 text-2xl text-rose" id="r-a">—</p></div>
-        <div class="stat-card card p-5" style="--accent-line:#6366f1;"><p class="font-mono text-xs text-muted uppercase mb-2">Intercept b</p><p class="font-display font-800 text-2xl" style="color:#6366f1" id="r-b">—</p></div>
-        <div class="stat-card card p-5" style="--accent-line:#c49a2a;"><p class="font-mono text-xs text-muted uppercase mb-2">Std Dev &sigma;(e)</p><p class="font-display font-800 text-2xl text-gold" id="r-sde">—</p></div>
-        <div class="stat-card card p-5" style="--accent-line:#16a34a;"><p class="font-mono text-xs text-muted uppercase mb-2">R&sup2;</p><p class="font-display font-800 text-2xl" style="color:#16a34a" id="r-r2">—</p></div>
+
+      <div class="mb-8 fade-in">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">02</span></span>
+          <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">Linear Regression</h2>
+        </div>
+        <p class="font-body text-sm text-muted">V(t+1) = a &middot; V(t) + b + &epsilon;(t), least squares fit</p>
       </div>
 
-      <div class="grid grid-cols-3 gap-6 mb-8">
-        <div class="stat-card card p-6" style="--accent-line:#0d7377;">
-          <p class="font-mono text-xs text-muted uppercase mb-2">Mean Reversion Rate (&theta;)</p>
+      <div class="grid grid-cols-5 gap-4 mb-8 fade-in">
+        <div class="stat-card card p-5" style="--accent-line:#0d7377;--accent-glow:rgba(13,115,119,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Data Points n</p>
+          <p class="font-display font-800 text-2xl text-accent" id="r-n">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#c2425a;--accent-glow:rgba(194,66,90,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Slope a</p>
+          <p class="font-display font-800 text-2xl text-rose" id="r-a">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#6366f1;--accent-glow:rgba(99,102,241,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Intercept b</p>
+          <p class="font-display font-800 text-2xl" style="color:#6366f1" id="r-b">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#c49a2a;--accent-glow:rgba(196,154,42,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">Std Dev &sigma;(e)</p>
+          <p class="font-display font-800 text-2xl text-gold" id="r-sde">—</p>
+        </div>
+        <div class="stat-card card p-5" style="--accent-line:#16a34a;--accent-glow:rgba(22,163,74,.08)">
+          <p class="font-mono text-xs text-muted uppercase tracking-wider mb-2">R&sup2;</p>
+          <p class="font-display font-800 text-2xl" style="color:#16a34a" id="r-r2">—</p>
+        </div>
+      </div>
+
+      <div class="card p-6 mb-10 fade-in">
+        <h3 class="font-display font-700 text-base text-ink mb-4">Intermediate Calculations</h3>
+        <div class="grid grid-cols-5 gap-4">
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sx</p><p class="font-mono text-sm text-ink font-bold" id="r-sx">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sy</p><p class="font-mono text-sm text-ink font-bold" id="r-sy">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sxx</p><p class="font-mono text-sm text-ink font-bold" id="r-sxx">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Syy</p><p class="font-mono text-sm text-ink font-bold" id="r-syy">—</p></div>
+          <div class="p-3 rounded-lg bg-sand text-center"><p class="font-mono text-[10px] text-muted uppercase mb-1">Sxy</p><p class="font-mono text-sm text-ink font-bold" id="r-sxy">—</p></div>
+        </div>
+        <div class="mt-4 font-mono text-xs text-muted bg-sand rounded-xl p-4 leading-relaxed" id="regression-detail"></div>
+      </div>
+
+      <div class="mb-8 fade-in">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">03</span></span>
+          <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">OU Process Parameters</h2>
+        </div>
+        <p class="font-body text-sm text-muted">Derived from regression coefficients: &theta; = -ln(a)/&Delta;t, &mu; = b/(1-a), &sigma; = sd(e)/&radic;&Delta;t</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-6 mb-8 fade-in">
+        <div class="stat-card card p-6" style="--accent-line:#0d7377;--accent-glow:rgba(13,115,119,.08)">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-mono text-xs text-muted uppercase tracking-wider">Mean Reversion Rate</p>
+            <div class="w-8 h-8 rounded-lg bg-accent-light flex items-center justify-center"><svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
+          </div>
           <p class="font-display font-800 text-4xl text-accent" id="ou-theta">—</p>
+          <p class="font-mono text-xs text-muted mt-2">&theta; (1/time unit)</p>
         </div>
-        <div class="stat-card card p-6" style="--accent-line:#c2425a;">
-          <p class="font-mono text-xs text-muted uppercase mb-2">Long-term Mean (&mu;)</p>
+        <div class="stat-card card p-6" style="--accent-line:#c2425a;--accent-glow:rgba(194,66,90,.08)">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-mono text-xs text-muted uppercase tracking-wider">Long-term Mean</p>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(194,66,90,.08)"><svg class="w-4 h-4 text-rose" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg></div>
+          </div>
           <p class="font-display font-800 text-4xl text-rose" id="ou-mu">—</p>
+          <p class="font-mono text-xs text-muted mt-2">&mu; (VTH units)</p>
         </div>
-        <div class="stat-card card p-6" style="--accent-line:#c49a2a;">
-          <p class="font-mono text-xs text-muted uppercase mb-2">Noise Intensity (&sigma;)</p>
+        <div class="stat-card card p-6" style="--accent-line:#c49a2a;--accent-glow:rgba(196,154,42,.08)">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-mono text-xs text-muted uppercase tracking-wider">Noise Intensity</p>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(196,154,42,.08)"><svg class="w-4 h-4 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
+          </div>
           <p class="font-display font-800 text-4xl text-gold" id="ou-sigma">—</p>
+          <p class="font-mono text-xs text-muted mt-2">&sigma; (VTH/&radic;time)</p>
         </div>
       </div>
 
-      <div class="card p-6 mb-8">
+      <div class="card p-6 mb-10 fade-in">
+        <h3 class="font-display font-700 text-base text-ink mb-4">Parameter Derivation</h3>
+        <div id="ou-detail" class="font-mono text-xs text-muted bg-sand rounded-xl p-5 overflow-auto max-h-60 leading-relaxed"></div>
+      </div>
+
+      <div class="mb-8 fade-in">
+        <div class="flex items-center gap-3 mb-1">
+          <span class="glow-badge"><span class="glow-dot"></span><span class="font-mono">04</span></span>
+          <h2 class="font-display font-800 text-xl text-ink tracking-tight section-header">Simulation Results</h2>
+        </div>
+        <p class="font-body text-sm text-muted">Actual VTH data vs OU simulated trajectory</p>
+      </div>
+
+      <div class="card p-6 mb-8 fade-in">
         <div class="flex items-center justify-between mb-4">
           <div>
             <h3 class="font-display font-700 text-base text-ink mb-1">VTH Comparison Plot</h3>
             <p class="font-body text-xs text-muted">Red: actual measurement &middot; Black: OU simulation</p>
           </div>
           <div class="flex gap-2">
-            <button onclick="zoomChart()" class="btn-secondary px-4 py-2 rounded-xl text-xs">View Fullscreen</button>
-            <button onclick="openExportModal()" class="btn-primary px-4 py-2 rounded-xl text-xs">Download Chart</button>
+            <button onclick="zoomChart()" class="btn-secondary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"/></svg>
+              View Fullscreen
+            </button>
+            <button onclick="openExportModal()" class="btn-primary px-4 py-2 rounded-xl font-body text-xs flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Download Chart
+            </button>
           </div>
         </div>
-        <div style="position: relative; width: 100%;">
-          <canvas id="ou-chart" height="100"></canvas>
-        </div>
+        <canvas id="ou-chart" height="100"></canvas>
       </div>
 
       <div class="grid grid-cols-2 gap-6 mb-8">
-        <div class="card p-6"><h3 class="font-display font-700 text-sm mb-4">Descriptive Statistics</h3><div id="desc-stats-table"></div></div>
-        <div class="card p-6"><h3 class="font-display font-700 text-sm mb-4">Residual Analysis</h3><canvas id="residual-chart" height="100"></canvas></div>
-      </div>
-
-      <div class="card p-6 mb-8 flex justify-between items-center">
-        <span class="text-sm text-muted">Detailed Step Calculation Data Tables</span>
-        <div class="flex gap-2">
-          <button onclick="exportCSV()" class="btn-secondary px-4 py-2 rounded-xl text-xs">Export CSV</button>
-          <button onclick="exportXLSX()" class="btn-primary px-4 py-2 rounded-xl text-xs">Export XLSX</button>
+        <div class="card p-6 fade-in">
+          <h3 class="font-display font-700 text-base text-ink mb-1">Descriptive Statistics</h3>
+          <p class="font-body text-xs text-muted mb-4">Comparison of basic statistics between actual and simulated data</p>
+          <div id="desc-stats-table" class="overflow-x-auto"></div>
+        </div>
+        <div class="card p-6 fade-in" style="animation-delay:.05s">
+          <h3 class="font-display font-700 text-base text-ink mb-1">Residual Analysis</h3>
+          <p class="font-body text-xs text-muted mb-4">Residual = Actual - Simulated</p>
+          <canvas id="residual-chart" height="100"></canvas>
         </div>
       </div>
-      <div class="card p-4 mb-8 overflow-auto max-h-64 border border-line" id="data-table-wrap"></div>
-      <div class="card p-6 font-mono text-xs text-muted bg-sand" id="regression-detail"></div>
-      <div class="card p-6 font-mono text-xs text-muted bg-sand mt-4" id="ou-detail"></div>
+
+      <div class="card p-6 mb-8 fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-display font-700 text-base text-ink mb-1">Data Table</h3>
+            <p class="font-body text-xs text-muted">Cycle-by-cycle comparison of actual and simulated VTH</p>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="exportCSV()" class="btn-secondary px-5 py-2.5 rounded-xl font-body text-xs">
+              <span class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Export CSV</span>
+            </button>
+            <button onclick="exportXLSX()" class="btn-primary px-5 py-2.5 rounded-xl font-body text-xs">
+              <span class="flex items-center gap-1.5"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>Export XLSX</span>
+            </button>
+          </div>
+        </div>
+        <div class="overflow-auto max-h-96 rounded-xl border border-line" id="data-table-wrap"></div>
+      </div>
     </div>
   </main>
 
+  <footer class="border-t border-line py-6 mt-10">
+    <div class="max-w-6xl mx-auto px-8 flex items-center justify-between">
+      <p class="font-mono text-xs text-line">OU Process Simulator v1.0 &middot; Browser-based</p>
+      <p class="font-mono text-xs text-line">Open Source &middot; MIT License</p>
+    </div>
+  </footer>
+
+  <!-- Advanced Export Modal -->
   <div id="export-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-    <div class="card bg-white p-6 w-96 shadow-2xl">
-      <h3 class="font-display font-700 text-base text-ink mb-4 flex items-center gap-2">💾 Export Image Options</h3>
+    <div class="card bg-white p-6 w-96 shadow-2xl fade-in" style="animation-duration: 0.2s">
+      <h3 class="font-display font-700 text-base text-ink mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+        Export Plot Settings
+      </h3>
       <div class="space-y-4">
         <div>
-          <label class="font-mono text-[11px] text-muted block mb-1.5 uppercase">Image Format</label>
+          <label class="font-mono text-[11px] text-muted block mb-1.5 uppercase tracking-wider">Image Format</label>
           <select id="export-format" class="w-full rounded-xl px-3 py-2.5 font-mono text-sm">
-            <option value="image/png">PNG (.png) - 无损清晰</option>
-            <option value="image/jpeg">JPG (.jpg) - 适合普通查看</option>
-            <option value="image/tiff">TIFF (.tif) - 论文发表标准</option>
+            <option value="image/png">PNG (.png) - Lossless</option>
+            <option value="image/jpeg">JPEG (.jpg) - Compressed</option>
+            <option value="image/tiff">TIFF (.tif) - Publication Standard</option>
           </select>
         </div>
         <div>
-          <label class="font-mono text-[11px] text-muted block mb-1.5 uppercase">Resolution (DPI / Scaling)</label>
+          <label class="font-mono text-[11px] text-muted block mb-1.5 uppercase tracking-wider">Resolution / Sharpness</label>
           <select id="export-scale" class="w-full rounded-xl px-3 py-2.5 font-mono text-sm">
-            <option value="1">1x 屏幕标准分辨率</option>
-            <option value="2">2x 纵深高清</option>
-            <option value="3">3x 论文印刷级别 (推荐 ~300 DPI)</option>
-            <option value="4">4x 极致超清级 (用于大幅放大 ~600 DPI)</option>
+            <option value="1">Standard Resolution (1x Screen)</option>
+            <option value="2">Medium Resolution (2x Clear)</option>
+            <option value="3">High Resolution (3x ~300 DPI Paper Standard)</option>
+            <option value="4">Ultra High Resolution (4x ~600 DPI Ultra Sharp)</option>
           </select>
+          <p class="font-body text-[10px] text-muted mt-1.5 leading-relaxed">Higher scaling values force a high-DPI offscreen redraw, ensuring all text labels and data lines remain razor-sharp when zoomed or printed.</p>
         </div>
       </div>
       <div class="flex justify-end gap-2.5 mt-6 border-t border-line pt-4">
-        <button onclick="closeExportModal()" class="btn-secondary px-4 py-2 rounded-xl text-xs">Cancel</button>
-        <button onclick="executeAdvancedExport()" class="btn-primary px-5 py-2 rounded-xl text-xs">Download Now</button>
+        <button onclick="closeExportModal()" class="btn-secondary px-4 py-2 rounded-xl font-body text-xs">Cancel</button>
+        <button onclick="executeAdvancedExport()" class="btn-primary px-5 py-2 rounded-xl font-body text-xs">Download File</button>
       </div>
     </div>
   </div>
@@ -223,13 +336,17 @@ function handleFile(input) {
     const pattern = /-?\d+\.?\d*/g;
     const matches = text.match(pattern);
     if (!matches || matches.length < 3) {
-      alert('Could not parse enough numeric values.');
+      alert('Could not parse enough numeric values from the file. Need at least 3 data points.');
       return;
     }
     simData.actual = matches.map(Number);
     const info = document.getElementById('file-info');
     info.classList.remove('hidden');
-    info.innerHTML = `Loaded <b>${simData.actual.length}</b> points.`;
+    info.innerHTML =
+      `<span class="text-accent font-bold">File loaded:</span> ${file.name}<br>` +
+      `<span class="text-accent font-bold">Data points:</span> ${simData.actual.length.toLocaleString()}<br>` +
+      `<span class="text-accent font-bold">Range:</span> [${Math.min(...simData.actual).toFixed(4)}, ${Math.max(...simData.actual).toFixed(4)}]<br>` +
+      `<span class="text-accent font-bold">First 5:</span> ${simData.actual.slice(0,5).map(v=>v.toFixed(4)).join(', ')} ...`;
   };
   reader.readAsText(file);
 }
@@ -241,73 +358,308 @@ function gaussRand() {
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
 }
 
-function runSimulation() {
+function createLCG(seed) {
+  let s = seed % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return function() {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+function createSeededGauss(seed) {
+  const rng = createLCG(seed);
+  return function() {
+    let u = 0, v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  };
+}
+
+async function runSimulation() {
   if (!simData.actual || simData.actual.length < 3) {
-    alert('Please upload data first.');
+    alert('Please upload a valid VTH data file with at least 3 data points.');
     return;
   }
+
   const deltaT = parseFloat(document.getElementById('delta-t').value) || 1;
+  const seedInput = document.getElementById('random-seed').value;
+  const hasSeed = seedInput !== '' && !isNaN(parseInt(seedInput));
+
+  document.getElementById('run-progress').classList.remove('hidden');
+  document.getElementById('run-status').textContent = 'Reading data...';
+  document.getElementById('run-progress-bar').style.width = '5%';
+  await new Promise(r => setTimeout(r, 30));
+
   const V = simData.actual;
   const n = V.length;
   simData.n = n;
 
+  document.getElementById('run-status').textContent = 'Linear regression...';
+  document.getElementById('run-progress-bar').style.width = '15%';
+  await new Promise(r => setTimeout(r, 30));
+
   let Sx = 0, Sy = 0, Sxx = 0, Syy = 0, Sxy = 0;
   for (let i = 0; i < n - 1; i++) {
-    Sx += V[i + 1]; Sy += V[i];
-    Sxx += V[i + 1] * V[i + 1]; Syy += V[i] * V[i]; Sxy += V[i] * V[i + 1];
+    Sx += V[i + 1];
+    Sy += V[i];
+    Sxx += V[i + 1] * V[i + 1];
+    Syy += V[i] * V[i];
+    Sxy += V[i] * V[i + 1];
   }
-  const nn = n - 1;
+  const nn = n;
   const a = (nn * Sxy - Sx * Sy) / (nn * Sxx - Sx * Sx);
   const b = (Sy - a * Sx) / nn;
   const sd_e = Math.sqrt((nn * Syy - Sy * Sy - a * (nn * Sxy - Sx * Sy)) / (nn * (nn - 2)));
+
+  const meanY = Sy / (n - 1);
+  let ssTot = 0, ssRes = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const predicted = a * V[i] + b;
+    ssRes += (V[i + 1] - predicted) ** 2;
+    ssTot += (V[i + 1] - meanY) ** 2;
+  }
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+
+  document.getElementById('run-status').textContent = 'Computing OU parameters...';
+  document.getElementById('run-progress-bar').style.width = '35%';
+  await new Promise(r => setTimeout(r, 30));
 
   const theta = -Math.log(a) / deltaT;
   const mu = b / (1 - a);
   const sigma = sd_e / Math.sqrt(deltaT);
 
+  document.getElementById('run-status').textContent = 'Simulating OU process...';
+  document.getElementById('run-progress-bar').style.width = '50%';
+  await new Promise(r => setTimeout(r, 30));
+
+  const gaussFn = hasSeed ? createSeededGauss(parseInt(seedInput)) : gaussRand;
   const simulated = new Array(n);
   simulated[0] = V[0];
   const expTheta = Math.exp(-theta * deltaT);
   const sqrtTerm = Math.sqrt((1 - Math.exp(-2 * theta * deltaT)) / (2 * theta));
   for (let t = 0; t < n - 1; t++) {
-    simulated[t + 1] = simulated[t] * expTheta + mu * (1 - expTheta) + sigma * sqrtTerm * gaussRand();
+    simulated[t + 1] = simulated[t] * expTheta + mu * (1 - expTheta) + sigma * sqrtTerm * gaussFn();
   }
   simData.simulated = simulated;
-  simData.params = { a, b, sd_e, theta, mu, sigma, r2:0.95, Sx, Sy, Sxx, Syy, Sxy, deltaT, n };
+  simData.params = { a, b, sd_e, theta, mu, sigma, r2, Sx, Sy, Sxx, Syy, Sxy, deltaT, n, hasSeed, seed: hasSeed ? parseInt(seedInput) : null };
+
+  document.getElementById('run-status').textContent = 'Updating UI...';
+  document.getElementById('run-progress-bar').style.width = '80%';
+  await new Promise(r => setTimeout(r, 30));
 
   document.getElementById('results').classList.remove('hidden');
-  document.getElementById('r-n').textContent = n;
+
+  document.getElementById('r-n').textContent = n.toLocaleString();
   document.getElementById('r-a').textContent = a.toFixed(6);
   document.getElementById('r-b').textContent = b.toFixed(6);
   document.getElementById('r-sde').textContent = sd_e.toFixed(6);
+  document.getElementById('r-r2').textContent = r2.toFixed(6);
+  document.getElementById('r-sx').textContent = Sx.toFixed(2);
+  document.getElementById('r-sy').textContent = Sy.toFixed(2);
+  document.getElementById('r-sxx').textContent = Sxx.toFixed(2);
+  document.getElementById('r-syy').textContent = Syy.toFixed(2);
+  document.getElementById('r-sxy').textContent = Sxy.toFixed(2);
+
+  document.getElementById('regression-detail').innerHTML = 
+    `<div class="text-accent mb-2 font-bold">[Linear Regression: V(t+1) = a·V(t) + b]</div>` +
+    `n = ${n} (uses n data points, n-1 regression pairs)<br><br>` +
+    `<div style="color:#6366f1" class="mb-2 font-bold">[Step 1: Sums]</div>` +
+    `Sx = ΣV[1:] = ${Sx.toFixed(4)}<br>` +
+    `Sy = ΣV[:-1] = ${Sy.toFixed(4)}<br>` +
+    `Sxx = ΣV[1:]² = ${Sxx.toFixed(4)}<br>` +
+    `Syy = ΣV[:-1]² = ${Syy.toFixed(4)}<br>` +
+    `Sxy = ΣV[:-1]·V[1:] = ${Sxy.toFixed(4)}<br><br>` +
+    `<div style="color:#6366f1" class="mb-2 font-bold">[Step 2: Regression Coefficients]</div>` +
+    `a = (n·Sxy - Sx·Sy) / (n·Sxx - Sx²)<br>` +
+    `  = (${n}×${Sxy.toFixed(4)} - ${Sx.toFixed(4)}×${Sy.toFixed(4)}) / (${n}×${Sxx.toFixed(4)} - ${Sx.toFixed(4)}²)<br>` +
+    `  = <span class="text-rose font-bold">${a.toFixed(6)}</span><br><br>` +
+    `b = (Sy - a·Sx) / n<br>` +
+    `  = (${Sy.toFixed(4)} - ${a.toFixed(6)}×${Sx.toFixed(4)}) / ${n}<br>` +
+    `  = <span style="color:#6366f1" class="font-bold">${b.toFixed(6)}</span><br><br>` +
+    `sd(e) = √((n·Syy - Sy² - a·(n·Sxy - Sx·Sy)) / (n·(n-2)))<br>` +
+    `  = <span class="text-gold font-bold">${sd_e.toFixed(6)}</span><br><br>` +
+    `R² = <span style="color:#16a34a" class="font-bold">${r2.toFixed(6)}</span>`;
+
   document.getElementById('ou-theta').textContent = theta.toFixed(6);
   document.getElementById('ou-mu').textContent = mu.toFixed(6);
   document.getElementById('ou-sigma').textContent = sigma.toFixed(6);
 
-  // 渲染主图表
+  document.getElementById('ou-detail').innerHTML = 
+    `<div class="text-accent mb-2 font-bold">[OU Parameter Derivation]</div>` +
+    `θ = -ln(a) / Δt = -ln(${a.toFixed(6)}) / ${deltaT} = <span class="text-accent font-bold">${theta.toFixed(6)}</span><br>` +
+    `μ = b / (1 - a) = ${b.toFixed(6)} / (1 - ${a.toFixed(6)}) = <span class="text-rose font-bold">${mu.toFixed(6)}</span><br>` +
+    `σ = sd(e) / √Δt = ${sd_e.toFixed(6)} / √${deltaT} = <span class="text-gold font-bold">${sigma.toFixed(6)}</span><br><br>` +
+    `<div class="text-muted font-bold mb-1">[Physical Interpretation]</div>` +
+    `• Mean Reversion Rate (θ): The speed at which VTH returns toward the long-term equilibrium.<br>` +
+    `• Long-term Mean (μ): The stable equilibrium constant baseline level of VTH threshold voltage.<br>` +
+    `• Noise Intensity (σ): Volatility amplitude of background random disturbances noise dynamics.`;
+
+  const stepSize = Math.max(1, Math.floor(n / 10));
+  const cycleLabels = Array.from({length: n}, (_, i) => i + 1);
+  
   if (window.mainChart) window.mainChart.destroy();
   window.mainChart = new Chart(document.getElementById('ou-chart'), {
     type: 'line',
     data: {
-      labels: Array.from({length: n}, (_, i) => i + 1),
+      labels: cycleLabels,
       datasets: [
-        { label: 'Actual VTH Data', data: V, borderColor: '#c2425a', borderWidth: 1.2, radius: 1, fill: false },
-        { label: 'OU Simulated', data: simulated, borderColor: '#1a1a1a', borderWidth: 1.2, radius: 1, fill: false }
+        {
+          label: 'Actual VTH Data',
+          data: V,
+          borderColor: '#c2425a',
+          backgroundColor: '#fff',
+          pointBorderColor: '#c2425a',
+          pointBackgroundColor: '#fff',
+          pointBorderWidth: 1.2,
+          pointRadius: 1.8,
+          pointHoverRadius: 4,
+          borderWidth: 1.2,
+          tension: 0,
+          fill: false
+        },
+        {
+          label: 'OU Simulated',
+          data: simulated,
+          borderColor: '#1a1a1a',
+          backgroundColor: '#fff',
+          pointBorderColor: '#1a1a1a',
+          pointBackgroundColor: '#fff',
+          pointBorderWidth: 1.2,
+          pointRadius: 1.8,
+          pointHoverRadius: 4,
+          borderWidth: 1.2,
+          tension: 0,
+          fill: false
+        }
       ]
     },
     options: {
       responsive: true,
-      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true, padding: 20 } }
+      },
       scales: {
-        x: { title: { display: true, text: 'Cycles' } },
-        y: { title: { display: true, text: 'VTH (V)' } }
+        x: {
+          title: { display: true, text: 'Cycles', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          bounds: 'data',
+          min: 1,
+          max: n,
+          ticks: {
+            color: '#94a3b8', 
+            font: { size: 9 },
+            autoSkip: false,
+            callback: function(value, index, ticks) {
+              const val = index + 1;
+              if (val === 1 || val === n || val % stepSize === 0) {
+                return val;
+              }
+              return null;
+            }
+          }
+        },
+        y: {
+          title: { display: true, text: 'VTH (V)', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        }
       }
     }
   });
+
+  const residuals = V.map((v, i) => v - simulated[i]);
+  if (window.residualChart) window.residualChart.destroy();
+  window.residualChart = new Chart(document.getElementById('residual-chart'), {
+    type: 'line',
+    data: {
+      labels: cycleLabels,
+      datasets: [{
+        label: 'Residual (Actual - Simulated)',
+        data: residuals,
+        borderColor: 'rgba(13,115,119,0.7)',
+        backgroundColor: 'rgba(13,115,119,0.06)',
+        pointRadius: 0,
+        borderWidth: 1.2,
+        tension: 0.1,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#7a7570', font: { family: 'Arial', size: 11 }, usePointStyle: true } } },
+      scales: {
+        x: {
+          title: { display: true, text: 'Cycle', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          bounds: 'data',
+          min: 1,
+          max: n,
+          ticks: {
+            color: '#94a3b8', 
+            font: { size: 9 },
+            autoSkip: false,
+            callback: function(value, index, ticks) {
+              const val = index + 1;
+              if (val === 1 || val === n || val % stepSize === 0) {
+                return val;
+              }
+              return null;
+            }
+          }
+        },
+        y: {
+          title: { display: true, text: 'Residual', color: '#7a7570', font: { family: 'Arial', size: 11 } },
+          grid: { color: '#f0ece4' },
+          ticks: { color: '#94a3b8', font: { size: 10 } }
+        }
+      }
+    }
+  });
+
+  const stats = (arr) => {
+    const m = arr.reduce((s, v) => s + v, 0) / arr.length;
+    const v = arr.reduce((s, x) => s + (x - m) ** 2, 0) / arr.length;
+    const sd = Math.sqrt(v);
+    const sorted = [...arr].sort((a, b) => a - b);
+    const med = sorted.length % 2 === 0 ? (sorted[sorted.length/2-1] + sorted[sorted.length/2]) / 2 : sorted[Math.floor(sorted.length/2)];
+    return { mean: m, std: sd, min: sorted[0], max: sorted[sorted.length-1], median: med };
+  };
+  const sA = stats(V), sS = stats(simulated);
+  const f6 = v => v.toFixed(6);
+  document.getElementById('desc-stats-table').innerHTML = 
+    `<table class="w-full font-mono text-xs data-table">` +
+    `<thead><tr class="text-muted"><th class="py-3 px-4 text-left rounded-tl-lg" style="background:#faf8f5">Statistic</th><th class="py-3 px-4 text-center" style="background:#faf8f5">Actual</th><th class="py-3 px-4 text-center rounded-tr-lg" style="background:#faf8f5">Simulated</th></tr></thead>` +
+    `<tbody>` +
+    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Mean</td><td class="py-3 px-4 text-center text-accent">${f6(sA.mean)}</td><td class="py-3 px-4 text-center text-accent">${f6(sS.mean)}</td></tr>` +
+    `<tr style="background:#faf8f5"><td class="py-3 px-4 font-medium">Std Dev</td><td class="py-3 px-4 text-center">${f6(sA.std)}</td><td class="py-3 px-4 text-center">${f6(sS.std)}</td></tr>` +
+    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Min</td><td class="py-3 px-4 text-center">${f6(sA.min)}</td><td class="py-3 px-4 text-center">${f6(sS.min)}</td></tr>` +
+    `<tr style="background:#faf8f5"><td class="py-3 px-4 font-medium">Max</td><td class="py-3 px-4 text-center">${f6(sA.max)}</td><td class="py-3 px-4 text-center">${f6(sS.max)}</td></tr>` +
+    `<tr style="background:#fff"><td class="py-3 px-4 font-medium">Median</td><td class="py-3 px-4 text-center">${f6(sA.median)}</td><td class="py-3 px-4 text-center">${f6(sS.median)}</td></tr>` +
+    `</tbody></table>`;
+
+  let tHTML = `<table class="w-full font-mono text-xs data-table"><thead><tr class="text-muted"><th class="py-2.5 px-4 text-left">Cycle</th><th class="py-2.5 px-4 text-center">Actual VTH</th><th class="py-2.5 px-4 text-center">OU Simulated</th><th class="py-2.5 px-4 text-center text-rose">Residual</th></tr></thead><tbody>`;
+  const maxRows = Math.min(n, 100);
+  for (let i = 0; i < maxRows; i++) {
+    const bg = i % 2 === 0 ? '#fff' : '#faf8f5';
+    tHTML += `<tr style="background:${bg}"><td class="py-2.5 px-4 text-muted">${i+1}</td><td class="py-2.5 px-4 text-center font-medium">${V[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-accent">${simulated[i].toFixed(4)}</td><td class="py-2.5 px-4 text-center font-medium text-rose">${residuals[i].toFixed(4)}</td></tr>`;
+  }
+  if (n > 100) {
+    tHTML += `<tr style="background:#fff"><td colspan="4" class="py-3 px-4 text-center text-muted italic">Showing first 100 rows (${n.toLocaleString()} total points) ...</td></tr>`;
+  }
+  tHTML += `</tbody></table>`;
+  document.getElementById('data-table-wrap').innerHTML = tHTML;
+
+  document.getElementById('run-status').textContent = 'Completed!';
+  document.getElementById('run-progress-bar').style.width = '100%';
+  setTimeout(() => { document.getElementById('run-progress').classList.add('hidden'); }, 800);
 }
 
+// Open Export Settings Dialog Modal
 function openExportModal() {
-  if (!window.mainChart) { alert('请先运行模拟生成图表！'); return; }
+  if (!window.mainChart) return;
   document.getElementById('export-modal').classList.remove('hidden');
 }
 
@@ -315,75 +667,98 @@ function closeExportModal() {
   document.getElementById('export-modal').classList.add('hidden');
 }
 
-/* ==================== 彻底修复的高级无卡死多格式图片导出系统 ==================== */
+// Advanced custom resolution and multi-format renderer exporter logic
 function executeAdvancedExport() {
   if (!window.mainChart) return;
 
   const format = document.getElementById('export-format').value; // image/png, image/jpeg, image/tiff
   const scale = parseFloat(document.getElementById('export-scale').value) || 1;
 
+  // Generate a standalone temporary high-DPI canvas to redraw the exact graph configs
   const origCanvas = document.getElementById('ou-chart');
-  
-  // 核心改进：创建独立的干净离屏大Canvas进行高DPI像素渲染，绝不触碰原图表配置对象
   const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = origCanvas.width * (scale / window.devicePixelRatio);
-  tempCanvas.height = origCanvas.height * (scale / window.devicePixelRatio);
+  
+  // Set dimensions scaled by user resolution preferences
+  const targetWidth = origCanvas.clientWidth * scale;
+  const targetHeight = origCanvas.clientHeight * scale;
+  tempCanvas.width = targetWidth;
+  tempCanvas.height = targetHeight;
   
   const ctx = tempCanvas.getContext('2d');
-  
-  // 填充白色背景（防止 JPG/TIF 渲染透明部分变黑，确保符合期刊要求）
+
+  // Fill solid white background (Crucial for JPEGs and academic TIF transparency errors)
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-  
-  // 将原始 Canvas 的缩放图像无损平铺绘制到大 Canvas 上
-  ctx.drawImage(origCanvas, 0, 0, tempCanvas.width, tempCanvas.height);
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-  let fileExtension = '.png';
-  if (format === 'image/jpeg') fileExtension = '.jpg';
-  if (format === 'image/tiff') fileExtension = '.tif';
+  // Re-generate chart configurations matching the primary view inside the high-res canvas
+  const configCopy = JSON.parse(JSON.stringify(window.mainChart.config));
   
-  const filename = `OU_Simulation_Plot_x${scale}${fileExtension}`;
-
-  try {
-    if (format === 'image/tiff') {
-      // 执行 TIFF 的标准的像素级 RGBA 转换
-      const rgbaPixels = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height).data;
-      
-      if (window.UTIF && typeof window.UTIF.encodeImage === 'function') {
-        const tiffBuffer = window.UTIF.encodeImage(rgbaPixels, tempCanvas.width, tempCanvas.height);
-        const blob = new Blob([tiffBuffer], { type: 'image/tiff' });
-        const downloadLink = document.createElement('a');
-        downloadLink.href = URL.createObjectURL(blob);
-        downloadLink.download = filename;
-        downloadLink.click();
-      } else {
-        // 如果 CDN 出现波动未正常加载，自动降级为无损高质量 PNG 确保点击必响应
-        console.warn('UTIF 库未就绪，自动为您采用高质量无损格式输出');
-        const dataUrl = tempCanvas.toDataURL('image/png');
-        const downloadLink = document.createElement('a');
-        downloadLink.href = dataUrl;
-        downloadLink.download = filename.replace('.tif', '_highres.png');
-        downloadLink.click();
+  // Disable transitions to snap rendering instantly
+  configCopy.options.animation = false;
+  configCopy.options.responsive = false;
+  
+  // Clean up fonts and layout properties for crisp multi-scaling factor adjustments
+  if (configCopy.options.plugins && configCopy.options.plugins.legend) {
+    configCopy.options.plugins.legend.labels.font.size = 11 * scale;
+    configCopy.options.plugins.legend.padding = 20 * scale;
+  }
+  
+  ['x', 'y'].forEach(axis => {
+    if (configCopy.options.scales[axis]) {
+      if (configCopy.options.scales[axis].title) {
+        configCopy.options.scales[axis].title.font.size = 11 * scale;
       }
+      if (configCopy.options.scales[axis].ticks) {
+        configCopy.options.scales[axis].ticks.font.size = 9 * scale;
+      }
+    }
+  });
+
+  // Adjust line and dot scaling ratios based on export metrics
+  configCopy.data.datasets.forEach(dataset => {
+    dataset.borderWidth = 1.2 * scale;
+    dataset.pointRadius = 1.8 * scale;
+    dataset.pointBorderWidth = 1.2 * scale;
+  });
+
+  // Temporarily bind a custom offline Chart instance to structural canvas
+  const tempChart = new Chart(tempCanvas, {
+    type: configCopy.type,
+    data: configCopy.data,
+    options: configCopy.options
+  });
+
+  // Wait brief thread tick for layout ticks to finalize mapping pixels
+  setTimeout(() => {
+    let fileExtension = '.png';
+    if (format === 'image/jpeg') fileExtension = '.jpg';
+    if (format === 'image/tiff') fileExtension = '.tif';
+    
+    const filename = `OU_Simulation_Plot_x${scale}${fileExtension}`;
+
+    if (format === 'image/tiff') {
+      // Decode raw viewport RGBA frame buffers arrays via UTIF browser encoder pipeline
+      const rgbaPixels = ctx.getImageData(0, 0, targetWidth, targetHeight).data;
+      const tiffBuffer = UTIF.encodeImage(rgbaPixels, targetWidth, targetHeight);
+      
+      const blob = new Blob([tiffBuffer], { type: 'image/tiff' });
+      const downloadLink = document.createElement('a');
+      downloadLink.href = URL.createObjectURL(blob);
+      downloadLink.download = filename;
+      downloadLink.click();
     } else {
-      // PNG 与 JPEG 的标准基础编码（JPG 设定 0.96 极高品质级别）
-      const dataUrl = tempCanvas.toDataURL(format, format === 'image/jpeg' ? 0.96 : undefined);
+      // Direct compression pipeline for system PNG/JPEG structures
+      const dataUrl = tempCanvas.toDataURL(format, format === 'image/jpeg' ? 0.95 : undefined);
       const downloadLink = document.createElement('a');
       downloadLink.href = dataUrl;
       downloadLink.download = filename;
       downloadLink.click();
     }
-  } catch (error) {
-    console.error('导出失败，触发兜底保护', error);
-    // 终极兜底，如果发生未知画布跨域或编码错误，确保直接导出当前屏幕图表
-    const backupUrl = origCanvas.toDataURL('image/png');
-    const downloadLink = document.createElement('a');
-    downloadLink.href = backupUrl;
-    downloadLink.download = `OU_Plot_Backup.png`;
-    downloadLink.click();
-  }
 
-  closeExportModal();
+    // Garbage clean background structures instantly
+    tempChart.destroy();
+    closeExportModal();
+  }, 50);
 }
 
 function zoomChart() {
@@ -391,13 +766,167 @@ function zoomChart() {
   const imgData = window.mainChart.toBase64Image();
   const newWindow = window.open();
   if (newWindow) {
-    newWindow.document.write(`<img src="${imgData}" style="max-width:100%; max-height:100%;">`);
+    newWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>OU Simulation Chart - Interactive Zoom View</title>
+          <style>
+            body { margin: 0; padding: 0; background: #faf8f5; overflow: hidden; font-family: Arial, sans-serif; height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; }
+            #container { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; cursor: grab; position: relative; user-select: none; }
+            #container:active { cursor: grabbing; }
+            img { max-width: 90%; max-height: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border-radius: 12px; background: white; padding: 24px; transition: transform 0.05s ease-out; transform-origin: 0 0; pointer-events: none; }
+            #hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(26,26,26,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); letter-spacing: 0.03em; text-align: center; line-height: 1.5; }
+          </style>
+        </head>
+        <body>
+          <div id="container">
+            <img id="zoomable-img" src="${imgData}" alt="OU Process Plot Fullscreen">
+          </div>
+          <div id="hint">🖱️ Scroll wheel to <b>Zoom In/Out</b> &nbsp;|&nbsp; 🤝 Click & Drag to <b>Pan</b> &nbsp;|&nbsp; 🔄 Double-click to <b>Reset</b></div>
+
+          <script>
+            const container = document.getElementById('container');
+            const img = document.getElementById('zoomable-img');
+
+            let scale = 1;
+            let pointX = 0;
+            let pointY = 0;
+            let startX = 0;
+            let startY = 0;
+            let isDragging = false;
+
+            function updateTransform() {
+              img.style.transformOrigin = '0 0';
+              img.style.transform = 'translate(' + pointX + 'px, ' + pointY + 'px) scale(' + scale + ')';
+            }
+
+            container.addEventListener('wheel', function (e) {
+              e.preventDefault();
+              
+              const rect = container.getBoundingClientRect();
+              const mouseX = e.clientX - rect.left;
+              const mouseY = e.clientY - rect.top;
+
+              const imageX = (mouseX - pointX) / scale;
+              const imageY = (mouseY - pointY) / scale;
+
+              const delta = -e.deltaY;
+              const zoomFactor = delta > 0 ? 1.15 : 1 / 1.15;
+              
+              let newScale = scale * zoomFactor;
+              newScale = Math.min(Math.max(0.4, newScale), 15);
+
+              pointX = mouseX - imageX * newScale;
+              pointY = mouseY - imageY * newScale;
+              scale = newScale;
+
+              updateTransform();
+            });
+
+            container.addEventListener('mousedown', function (e) {
+              e.preventDefault();
+              startX = e.clientX - pointX;
+              startY = e.clientY - pointY;
+              isDragging = true;
+            });
+
+            window.addEventListener('mousemove', function (e) {
+              if (!isDragging) return;
+              pointX = e.clientX - startX;
+              pointY = e.clientY - startY;
+              updateTransform();
+            });
+
+            window.addEventListener('mouseup', function () {
+              isDragging = false;
+            });
+
+            container.addEventListener('dblclick', function () {
+              scale = 1;
+              pointX = 0;
+              pointY = 0;
+              img.style.transformOrigin = 'center center';
+              img.style.transform = 'none';
+            });
+          <\/script>
+        </body>
+      </html>
+    `);
     newWindow.document.close();
+  } else {
+    alert('The pop-up window was blocked by your browser. Please allow pop-ups for this website.');
   }
 }
 
-function exportCSV() { alert('CSV exported'); }
-function exportXLSX() { alert('XLSX exported'); }
+function exportCSV() {
+  if (!simData.actual.length) return;
+  let csv = 'Cycle,Actual VTH,OU Simulated,Residual\n';
+  for (let i = 0; i < simData.n; i++) {
+    const res = simData.actual[i] - simData.simulated[i];
+    csv += `${i + 1},${simData.actual[i]},${simData.simulated[i]},${res}\n`;
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.setAttribute('download', `ou_process_data_n${simData.n}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function exportXLSX() {
+  if (!simData.actual.length) return;
+  const data = [['Cycle', 'Actual VTH', 'OU Simulated', 'Residual']];
+  for (let i = 0; i < simData.n; i++) {
+    data.push([i + 1, simData.actual[i], simData.simulated[i], simData.actual[i] - simData.simulated[i]]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'VTH Data');
+
+  const p = simData.params;
+  const paramData = [
+    ['OU Process Parameters'],
+    [''],
+    ['Parameter', 'Value'],
+    ['Slope a', p.a],
+    ['Intercept b', p.b],
+    ['Std Dev sd(e)', p.sd_e],
+    ['R-squared', p.r2],
+    [''],
+    ['Mean Reversion Rate θ', p.theta],
+    ['Long-term Mean μ', p.mu],
+    ['Noise Intensity σ', p.sigma],
+    [''],
+    ['Time Step Δt', p.deltaT],
+    ['Data Points n', p.n],
+    ['Random Seed', p.hasSeed ? p.seed : 'Random']
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(paramData);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Parameters');
+
+  XLSX.writeFile(wb, `ou_process_data_n${simData.n}.xlsx`);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const zone = document.querySelector('.drop-zone');
+  if(!zone) return;
+  ['dragenter', 'dragover'].forEach(name => {
+    zone.addEventListener(name, e => { e.preventDefault(); zone.classList.add('dragover'); }, false);
+  });
+  ['dragleave', 'drop'].forEach(name => {
+    zone.addEventListener(name, e => { e.preventDefault(); zone.classList.remove('dragover'); }, false);
+  });
+  zone.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if(files.length) {
+      document.getElementById('vth-file').files = files;
+      handleFile(document.getElementById('vth-file'));
+    }
+  }, false);
+});
 </script>
 </body>
 </html>
